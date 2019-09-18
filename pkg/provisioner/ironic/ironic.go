@@ -16,6 +16,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/ports"
 	noauthintrospection "github.com/gophercloud/gophercloud/openstack/baremetalintrospection/noauth"
 	"github.com/gophercloud/gophercloud/openstack/baremetalintrospection/v1/introspection"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	nodeutils "github.com/gophercloud/utils/openstack/baremetal/v1/nodes"
 
@@ -42,9 +43,12 @@ var inspectorEndpoint string
 
 const (
 	// See nodes.Node.PowerState for details
-	powerOn   = "power on"
-	powerOff  = "power off"
-	powerNone = "None"
+	powerOn                   = "power on"
+	powerOff                  = "power off"
+	softPowerOff              = "soft power off"
+	powerNone                 = "None"
+	softPowerOff              = "soft power off"
+	softPowerOffToleranceTime = 10 * time.Second
 )
 
 func init() {
@@ -651,6 +655,8 @@ func (p *ironicProvisioner) UpdateHardwareState() (result provisioner.Result, er
 	case powerOn:
 		discoveredVal = true
 	case powerOff:
+		discoveredVal = false
+	case softPowerOff:
 		discoveredVal = false
 	case powerNone:
 		p.log.Info("could not determine power state", "value", ironicNode.PowerState)
@@ -1325,20 +1331,37 @@ func (p *ironicProvisioner) PowerOn() (result provisioner.Result, err error) {
 // provisioning operation.
 func (p *ironicProvisioner) PowerOff() (result provisioner.Result, err error) {
 	p.log.Info("ensuring host is powered off")
+	softSDCommandTime := p.host.Status.LastSoftPowerOff.Time
+	currentTime := metav1.Now().Time
+
+	waitedFor := currentTime.Sub(softSDCommandTime) / time.Second
 
 	ironicNode, err := p.findExistingHost()
 	if err != nil {
 		return result, errors.Wrap(err, "failed to find existing host")
 	}
+	// DELETE ME before merging.
+	// We do not need to check if soft power is supported.
+	// Regardless of the support, we wait the timeout then we do hard shutdown.
 
 	if ironicNode.PowerState != powerOff {
 		if ironicNode.TargetPowerState == powerOff {
 			p.log.Info("waiting for power status to change")
 			result.RequeueAfter = powerRequeueDelay
-			result.Dirty = true
+			return result, nil
+		} else if ironicNode.TargetPowerState == softPowerOff { // If soft power off is supported
+			p.log.Info("waiting for power status to change")
+			result.RequeueAfter = powerRequeueDelay
 			return result, nil
 		}
-		result, err = p.changePower(ironicNode, nodes.PowerOff)
+		if waitedFor > softPowerOffToleranceTime {
+			p.log.Info("Exceeded waiting time")
+			result, err = p.changePower(ironicNode, nodes.PowerOff)
+
+		} else {
+			result, err = p.changePower(ironicNode, nodes.SoftPowerOff)
+		}
+
 		if err != nil {
 			result.RequeueAfter = powerRequeueDelay
 			return result, errors.Wrap(err, "failed to power off host")

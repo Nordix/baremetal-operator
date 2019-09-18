@@ -727,6 +727,9 @@ func (r *ReconcileBareMetalHost) manageHostPower(prov provisioner.Provisioner, i
 	if info.host.Spec.Online {
 		provResult, err = prov.PowerOn()
 	} else {
+		if err = r.markLastSoftPowerOff(info.host); err != nil {
+			return reconcile.Result{}, errors.Wrap(err, fmt.Sprintf("failed to mark last soft power off time %q", err.Error()))
+		}
 		provResult, err = prov.PowerOff()
 	}
 	if err != nil {
@@ -824,6 +827,19 @@ func (r *ReconcileBareMetalHost) actionManageReady(prov provisioner.Provisioner,
 func (r *ReconcileBareMetalHost) saveStatus(host *metal3v1alpha1.BareMetalHost) error {
 	t := metav1.Now()
 	host.Status.LastUpdated = &t
+	return r.client.Status().Update(context.TODO(), host)
+}
+
+// Mark the time at which soft power off command was sent to this host.
+func (r *ReconcileBareMetalHost) markLastSoftPowerOff(host *metal3v1alpha1.BareMetalHost) error {
+
+	// If host.Status.LastSoftPowerOff.IsZero() == some predefined value
+	t := metav1.Now()
+	// FIXME
+	// This value needs to be set only once. But this one sets the value every time.
+
+	host.Status.LastSoftPowerOff = &t
+
 	return r.client.Status().Update(context.TODO(), host)
 }
 
