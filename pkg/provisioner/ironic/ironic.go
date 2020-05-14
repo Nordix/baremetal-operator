@@ -243,7 +243,7 @@ func (p *ironicProvisioner) ValidateManagementAccess(credentialsChanged bool) (r
 				BootInterface:       p.bmcAccess.BootInterface(),
 				Name:                p.host.Name,
 				DriverInfo:          driverInfo,
-				InspectInterface:    "inspector",
+				InspectInterface:    "redfish",
 				ManagementInterface: p.bmcAccess.ManagementInterface(),
 				PowerInterface:      p.bmcAccess.PowerInterface(),
 				RAIDInterface:       p.bmcAccess.RAIDInterface(),
