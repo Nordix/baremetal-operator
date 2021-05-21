@@ -1,6 +1,6 @@
 # API and Resource Definitions
 
-## BareMetalHost
+## BareMetalHost.
 
 **Metal³** introduces the concept of **BareMetalHost** resource, which
 defines a physical host and its properties. The **BareMetalHost** embeds
