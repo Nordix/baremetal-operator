@@ -23,6 +23,9 @@ spec:
         - name: cert-mariadb-ca
           mountPath: "/certs/ca/mariadb"
           readOnly: true
+        - name: cert-ironic-inspector
+          mountPath: "/certs/ironic-inspector"
+          readOnly: true
       - name: ironic-conductor
         volumeMounts:
         - name: cert-ironic
