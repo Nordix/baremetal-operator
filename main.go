@@ -43,6 +43,16 @@ var (
 	scheme     = k8sruntime.NewScheme()
 	setupLog   = ctrl.Log.WithName("setup")
 	healthAddr string
+
+	//flags
+	watchNamespace       string
+	metricsAddr          string
+	metricsBindAddr      string
+	enableLeaderElection bool
+	leaderElection       bool
+	devLogging           bool
+	runInTestMode        bool
+	runInDemoMode        bool
 )
 
 func init() {
@@ -73,13 +83,6 @@ func setupChecks(mgr ctrl.Manager) {
 }
 
 func main() {
-	var watchNamespace string
-	var metricsAddr string
-	var enableLeaderElection bool
-	var devLogging bool
-	var runInTestMode bool
-	var runInDemoMode bool
-
 	// From CAPI point of view, BMO should be able to watch all namespaces
 	// in case of a deployment that is not multi-tenant. If the deployment
 	// is for multi-tenancy, then the BMO should watch only the provided
@@ -88,7 +91,12 @@ func main() {
 		"Namespace that the controller watches to reconcile host resources.")
 	flag.StringVar(&metricsAddr, "metrics-addr", "127.0.0.1:8085",
 		"The address the metric endpoint binds to.")
+	flag.StringVar(&metricsBindAddr, "metrics-bind-addr", "127.0.0.1:8085",
+		"The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
+		"Enable leader election for controller manager. "+
+			"Enabling this will ensure there is only one active controller manager.")
+	flag.BoolVar(&leaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&devLogging, "dev", false, "enable developer logging")
@@ -110,7 +118,7 @@ func main() {
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                  scheme,
-		MetricsBindAddress:      metricsAddr,
+		MetricsBindAddress:      metricsBindAddr,
 		Port:                    0, // Add flag with default of 9443 when adding webhooks
 		LeaderElection:          enableLeaderElection,
 		LeaderElectionID:        "baremetal-operator",
