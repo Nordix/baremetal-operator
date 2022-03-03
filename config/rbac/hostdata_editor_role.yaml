@@ -1,0 +1,24 @@
+# permissions for end users to edit hostdata.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: hostdata-editor-role
+rules:
+- apiGroups:
+  - metal3.io.metal3.io
+  resources:
+  - hostdata
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - metal3.io.metal3.io
+  resources:
+  - hostdata/status
+  verbs:
+  - get

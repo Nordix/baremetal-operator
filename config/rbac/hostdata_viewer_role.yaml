@@ -1,0 +1,20 @@
+# permissions for end users to view hostdata.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: hostdata-viewer-role
+rules:
+- apiGroups:
+  - metal3.io.metal3.io
+  resources:
+  - hostdata
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - metal3.io.metal3.io
+  resources:
+  - hostdata/status
+  verbs:
+  - get

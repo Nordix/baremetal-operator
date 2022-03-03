@@ -1,0 +1,6 @@
+apiVersion: metal3.io.metal3.io/v1alpha1
+kind: HostData
+metadata:
+  name: hostdata-sample
+spec:
+  # TODO(user): Add fields here
