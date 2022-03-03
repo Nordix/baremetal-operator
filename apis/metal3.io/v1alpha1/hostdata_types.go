@@ -23,19 +23,16 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// +kubebuilder:resource:path=hostdata,scope=Namespaced,shortName=hd
+// +kubebuilder:printcolumn:name="Host",type=string,JSONPath=`.spec.hardware.hostname`
+
 // HostDataSpec defines the desired state of HostData
 type HostDataSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of HostData. Edit hostdata_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
-}
-
-// HostDataStatus defines the observed state of HostData
-type HostDataStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// The hardware discovered on the host during its inspection.
+	HardwareDetails *HardwareDetails `json:"hardware,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -46,8 +43,7 @@ type HostData struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   HostDataSpec   `json:"spec,omitempty"`
-	Status HostDataStatus `json:"status,omitempty"`
+	Spec HostDataSpec `json:"spec,omitempty"`
 }
 
 //+kubebuilder:object:root=true
