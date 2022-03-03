@@ -90,6 +90,7 @@ func (info *reconcileInfo) publishEvent(reason, message string) {
 // +kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=metal3.io,resources=preprovisioningimages,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=metal3.io,resources=hostdata,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;update
 // +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch
 

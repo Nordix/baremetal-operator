@@ -89,6 +89,16 @@ rules:
 - apiGroups:
   - metal3.io
   resources:
+  - hostdata
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - metal3.io
+  resources:
   - hostfirmwaresettings
   verbs:
   - create
