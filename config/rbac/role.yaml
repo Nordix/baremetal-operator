@@ -95,7 +95,15 @@ rules:
   - delete
   - get
   - list
+  - patch
+  - update
   - watch
+- apiGroups:
+  - metal3.io
+  resources:
+  - hostdata/finalizers
+  verbs:
+  - update
 - apiGroups:
   - metal3.io
   resources:

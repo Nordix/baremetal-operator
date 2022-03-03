@@ -60,6 +60,7 @@ const (
 	inspectAnnotationPrefix       = "inspect.metal3.io"
 	hardwareDetailsAnnotation     = inspectAnnotationPrefix + "/hardwaredetails"
 	clarifySoftPoweroffFailure    = "Continuing with hard poweroff after soft poweroff fails. More details: "
+	hostDataFinalizer             = metal3v1alpha1.BareMetalHostFinalizer + "/hostdata"
 )
 
 // BareMetalHostReconciler reconciles a BareMetalHost object
@@ -78,7 +79,6 @@ type reconcileInfo struct {
 	request           ctrl.Request
 	bmcCredsSecret    *corev1.Secret
 	events            []corev1.Event
-	errorMessage      string
 	postSaveCallbacks []func()
 }
 
@@ -90,7 +90,8 @@ func (info *reconcileInfo) publishEvent(reason, message string) {
 // +kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=metal3.io,resources=preprovisioningimages,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=metal3.io,resources=hostdata,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups=metal3.io,resources=hostdata,verbs=get;list;watch;create;delete;patch;update
+// +kubebuilder:rbac:groups=metal3.io,resources=hostdata/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;update
 // +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch
 
@@ -126,6 +127,27 @@ func (r *BareMetalHostReconciler) Reconcile(ctx context.Context, request ctrl.Re
 		// Error reading the object - requeue the request.
 		return ctrl.Result{}, errors.Wrap(err, "could not load host data")
 	}
+	// Fetch the HostData
+	hostData := &metal3v1alpha1.HostData{}
+	hostDataKey := client.ObjectKey{
+		Name:      host.Name,
+		Namespace: host.Namespace,
+	}
+	err = r.Get(ctx, hostDataKey, hostData)
+	if err != nil && !k8serrors.IsNotFound(err) {
+		fmt.Println("Handle it")
+	}
+
+	// Host is being deleted, so we delete the finalizer from the hostData to allow its deletion.
+	if !host.DeletionTimestamp.IsZero() {
+		if controllerutil.ContainsFinalizer(hostData, hostDataFinalizer) {
+			controllerutil.RemoveFinalizer(hostData, hostDataFinalizer)
+		}
+		if err := r.Update(context.Background(), hostData); err != nil {
+			return ctrl.Result{}, errors.Wrap(err, "failed to remove hostData finalizer")
+		}
+		reqLogger.Info("hostData is ready to be deleted")
+	}
 
 	// If the reconciliation is paused, requeue
 	annotations := host.GetAnnotations()
@@ -139,35 +161,36 @@ func (r *BareMetalHostReconciler) Reconcile(ctx context.Context, request ctrl.Re
 	// Check if Status is empty and status annotation is present
 	// Manually restore data.
 	if !r.hostHasStatus(host) {
-		reqLogger.Info("Fetching Status from Annotation")
+		reqLogger.Info("Reconstructing Status from hostData and annotation")
 		objStatus, err := r.getHostStatusFromAnnotation(host)
-		if err == nil && objStatus != nil {
+		if err == nil && objStatus != nil && hostData.Name != "" {
+			host.Status.HardwareDetails = hostData.Spec.HardwareDetails
 			host.Status = *objStatus
-			if host.Status.LastUpdated.IsZero() {
-				// Ensure the LastUpdated timestamp in set to avoid
-				// infinite loops if the annotation only contained
-				// part of the status information.
-				t := metav1.Now()
-				host.Status.LastUpdated = &t
-			}
-			errStatus := r.Status().Update(ctx, host)
-			if errStatus != nil {
-				return ctrl.Result{}, errors.Wrap(errStatus, "Could not restore status from annotation")
-			}
-			return ctrl.Result{Requeue: true}, nil
+		} else if err == nil && objStatus != nil {
+			host.Status = *objStatus
 		}
-		reqLogger.Info("No status cache found")
-	} else {
-		// The status annotation is unneeded, as the status subresource is
-		// already present. The annotation data will get outdated, so remove it.
-		if _, present := annotations[metal3v1alpha1.StatusAnnotation]; present {
-			delete(annotations, metal3v1alpha1.StatusAnnotation)
-			errStatus := r.Update(ctx, host)
-			if errStatus != nil {
-				return ctrl.Result{}, errors.Wrap(errStatus, "Could not delete status annotation")
-			}
-			return ctrl.Result{Requeue: true}, nil
+		if host.Status.LastUpdated.IsZero() {
+			// Ensure the LastUpdated timestamp in set to avoid
+			// infinite loops if the annotation only contained
+			// part of the status information.
+			t := metav1.Now()
+			host.Status.LastUpdated = &t
 		}
+		errStatus := r.Status().Update(ctx, host)
+		if errStatus != nil {
+			return ctrl.Result{}, errors.Wrap(errStatus, "Could not restore status from annotation")
+		}
+		return ctrl.Result{Requeue: true}, nil
+	}
+	// The status annotation is unneeded, as the status subresource is
+	// already present. The annotation data will get outdated, so remove it.
+	if _, present := annotations[metal3v1alpha1.StatusAnnotation]; present {
+		delete(annotations, metal3v1alpha1.StatusAnnotation)
+		errStatus := r.Update(ctx, host)
+		if errStatus != nil {
+			return ctrl.Result{}, errors.Wrap(errStatus, "Could not delete status annotation")
+		}
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Consume hardwaredetails from annotation if present
@@ -314,7 +337,7 @@ func (r *BareMetalHostReconciler) updateHardwareDetails(request ctrl.Request, ho
 			return updated, errors.Wrap(err, "Could not update removing hardwaredetails annotation")
 		}
 		// In the case where the value was not just consumed, generate an event
-		if updated != true {
+		if !updated {
 			r.publishEvent(request, host.NewEvent("RemoveAnnotation", "HardwareDetails annotation ignored, status already set and inspection is not disabled"))
 		}
 	}
@@ -907,6 +930,41 @@ func (r *BareMetalHostReconciler) actionInspecting(prov provisioner.Provisioner,
 
 	clearError(info.host)
 	info.host.Status.HardwareDetails = details
+
+	// Create HostData with the same name and namesapce as BareMetalHost
+	hostData := &metal3v1alpha1.HostData{}
+	hostDataKey := client.ObjectKey{
+		Name:      info.host.Name,
+		Namespace: info.host.Namespace,
+	}
+	hd := &metal3v1alpha1.HostData{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "HostData",
+			APIVersion: metal3v1alpha1.GroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      info.host.Name,
+			Namespace: info.host.Namespace,
+			// Register the finalizer immediately
+			Finalizers: []string{
+				hostDataFinalizer,
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(info.host, metal3v1alpha1.GroupVersion.WithKind("BareMetalHost")),
+			},
+		},
+		Spec: metal3v1alpha1.HostDataSpec{
+			HardwareDetails: details,
+		},
+	}
+
+	if err := r.Client.Get(context.Background(), hostDataKey, hostData); err != nil && k8serrors.IsNotFound(err) {
+		if err := r.Client.Create(context.Background(), hd); err != nil {
+			return actionError{errors.Wrap(err, "failed to create hostData")}
+		}
+		info.log.Info(fmt.Sprintf("Created hostData %q in %q namespace\n", string(hd.Name), string(hd.Namespace)))
+	}
+
 	return actionComplete{}
 }
 

@@ -23,9 +23,6 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// +kubebuilder:resource:path=hostdata,scope=Namespaced,shortName=hd
-// +kubebuilder:printcolumn:name="Host",type=string,JSONPath=`.spec.hardware.hostname`
-
 // HostDataSpec defines the desired state of HostData
 type HostDataSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -35,8 +32,9 @@ type HostDataSpec struct {
 	HardwareDetails *HardwareDetails `json:"hardware,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:path=hostdata,scope=Namespaced,shortName=hd
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Time duration since creation of HostData"
 
 // HostData is the Schema for the hostdata API
 type HostData struct {
