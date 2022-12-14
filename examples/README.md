@@ -53,21 +53,10 @@ worker-2   provisioning              true             10s
 worker-3   provisioned               true             10s
 ```
 
-## Experiment with BMO + CAPM3 + CAPI
-
-- BMO running in test mode
-- CAPM3 running normally
-- CAPI running normally
-
-Setup:
-
-1. Create kind cluster
-2. Initialize CAPI and Metal3 (clusterctl init --provider=metal3)
-3. Add BMO CRDs and start BMO in test mode
-4. Generate BMHs
-5. Generate CAPI/CAPM3 resources
+## Experiment with CAPI/CAPM3, API server and etcd for target cluster
 
 ```bash
+# Setup kind cluster and init metal3
 kind create cluster
 kubectl apply -k config/crd
 clusterctl init --infrastructure=metal3
@@ -75,77 +64,111 @@ clusterctl init --infrastructure=metal3
 # In separate terminal
 CONTAINER_RUNTIME=docker make run-test-mode
 
+# Create BMHs
 ./examples/produce-available-hosts.sh 3 > test-hosts.yaml
 kubectl create namespace metal3
 kubectl -n metal3 apply -f test-hosts.yaml
 
-# Generate cluster
-export CLUSTER_APIENDPOINT_HOST=127.0.0.1
-export CLUSTER_APIENDPOINT_PORT=6443
-export CTLPLANE_KUBEADM_EXTRA_CONFIG=""
-export IMAGE_CHECKSUM=97830b21ed272a3d854615beb54cf004
-export IMAGE_CHECKSUM_TYPE=md5
-export IMAGE_FORMAT=raw
-export IMAGE_URL="http://172.22.0.1/images/rhcos-ootpa-latest.qcow2"
-export WORKERS_KUBEADM_EXTRA_CONFIG=""
-
-clusterctl -n metal3 generate cluster test --kubernetes-version v1.25.3 > cluster.yaml
-# Apply
-kubectl -n metal3 apply -f cluster.yaml
+kubectl -n metal3 apply -f examples/cluster.yaml
 ```
 
-Status at this point: 3 available BMHs, 1 provisioned cluster, 1 machine, 1 metal3machine, 1 BMH with consumer (but still available).
-
-Now for some cheating/helping to move things along.
+### Certificate management for the control plane
 
 ```bash
-# Find the BMH with consumerRef and add provisioning data to it
-consumed_bmh="$(kubectl -n metal3 get bmh -o json | jq -r '.items[] | select(.spec | has("consumerRef")) | .metadata.name')"
-kubectl -n metal3 patch bmh "${consumed_bmh}" --type='merge' -p '{"spec":{"image":{"url": "http://172.22.0.1/images/rhcos-ootpa-latest.qcow2", "checksum": "97830b21ed272a3d854615beb54cf004"}}}'
+# Get the etcd CA certificate and key.
+# This is used by kubeadm to generate etcd peer, server and client certificates
+kubectl -n metal3 get secrets test-etcd -o jsonpath="{.data.tls\.crt}" | base64 -d > etcd-ca-tls.crt
+kubectl -n metal3 get secrets test-etcd -o jsonpath="{.data.tls\.key}" | base64 -d > etcd-ca-tls.key
+# Move it to where kubeadm expects it to be
+sudo mkdir -p /etc/kubernetes/pki/etcd
+sudo cp etcd-ca-tls.key /etc/kubernetes/pki/etcd/ca.key
+sudo cp etcd-ca-tls.crt /etc/kubernetes/pki/etcd/ca.crt
 
-# Get relevant machine and metal3machine
-metal3machine="$(kubectl -n metal3 get m3m -o jsonpath="{.items[0].metadata.name}")"
+# Generate peer certificate and upload to a secret
+sudo kubeadm init phase certs etcd-peer --config examples/kubeadm-config.yaml
+sudo cp /etc/kubernetes/pki/etcd/peer.key peer.key
+sudo cp /etc/kubernetes/pki/etcd/peer.crt peer.crt
+sudo chown "${USER}":"${USER}" peer.key
+sudo chown "${USER}":"${USER}" peer.crt
+kubectl -n metal3 create secret tls etcd-peer --cert peer.crt --key peer.key
+
+# Generate server certificate and upload to a secret
+sudo kubeadm init phase certs etcd-server --config examples/kubeadm-config.yaml
+sudo cp /etc/kubernetes/pki/etcd/server.key server.key
+sudo cp /etc/kubernetes/pki/etcd/server.crt server.crt
+sudo chown "${USER}":"${USER}" server.key
+sudo chown "${USER}":"${USER}" server.crt
+kubectl -n metal3 create secret tls etcd-server --cert server.crt --key server.key
+
+# Generate client certificate and upload to a secret
+sudo kubeadm init phase certs apiserver-etcd-client --config examples/kubeadm-config.yaml
+sudo cp /etc/kubernetes/pki/apiserver-etcd-client.key apiserver-etcd-client.key
+sudo cp /etc/kubernetes/pki/apiserver-etcd-client.crt apiserver-etcd-client.crt
+sudo chown "${USER}":"${USER}" apiserver-etcd-client.key
+sudo chown "${USER}":"${USER}" apiserver-etcd-client.crt
+kubectl -n metal3 create secret tls apiserver-etcd-client --cert apiserver-etcd-client.crt --key apiserver-etcd-client.key
+
+# Get the k8s CA certificate and key.
+# This is used by kubeadm to generate the API server certificates
+kubectl -n metal3 get secrets test-ca -o jsonpath="{.data.tls\.crt}" | base64 -d > ca-tls.crt
+kubectl -n metal3 get secrets test-ca -o jsonpath="{.data.tls\.key}" | base64 -d > ca-tls.key
+# Move it to where kubeadm expects it to be
+sudo mkdir -p /etc/kubernetes/pki
+sudo cp ca-tls.key /etc/kubernetes/pki/ca.key
+sudo cp ca-tls.crt /etc/kubernetes/pki/ca.crt
+
+# Generate API server certificate and upload to a secret
+sudo kubeadm init phase certs apiserver --config examples/kubeadm-config.yaml
+sudo cp /etc/kubernetes/pki/apiserver.key apiserver.key
+sudo cp /etc/kubernetes/pki/apiserver.crt apiserver.crt
+sudo chown "${USER}":"${USER}" apiserver.key
+sudo chown "${USER}":"${USER}" apiserver.crt
+kubectl -n metal3 create secret tls apiserver --cert apiserver.crt --key apiserver.key
+
+# Deploy etcd and API server
+kubectl -n metal3 apply -f examples/etcd.yaml
+kubectl -n metal3 apply -f examples/kube-apiserver-deployment.yaml
+```
+
+### Add initial fake node and kubeadm config
+
+```bash
+# Get kubeconfig
+clusterctl -n metal3 get kubeconfig test > kubeconfig-test.yaml
+# Edit kubeconfig to point to 127.0.0.1:6443 and set up port forward to the pod
+sed -i s/test-kube-apiserver.metal3.svc.cluster.local/127.0.0.1/ kubeconfig-test.yaml
+# In separate terminal!
+kubectl -n metal3 port-forward svc/test-kube-apiserver 6443
+
+# Set correct node name and apply
 machine="$(kubectl -n metal3 get machine -o jsonpath="{.items[0].metadata.name}")"
+# Find UID of BMH by checking the annotation of the m3m that does not yet have a providerID
+bmh_namespace_name="$(kubectl -n metal3 get m3m -o json | jq -r '.items[] | select(.spec | has("providerID") | not) | .metadata.annotations."metal3.io/BareMetalHost"')"
+bmh_name="${bmh_namespace_name#*/}"
+bmh_uid="$(kubectl -n metal3 get bmh "${bmh_name}" -o jsonpath="{.metadata.uid}")"
+sed "s/fake-node/${machine}/g" examples/fake-node.yaml > temp-node.yaml
+sed -i "s/fake-uuid/${bmh_uid}/g" temp-node.yaml
+kubectl --kubeconfig=kubeconfig-test.yaml create -f temp-node.yaml
+# Upload kubeadm config to configmap. This will mark the KCP as initialized.
+kubectl --kubeconfig=kubeconfig-test.yaml -n kube-system create cm kubeadm-config \
+  --from-file=ClusterConfiguration=examples/kubeadm-config.yaml
 
-# Calculate providerID
-provider_id="metal3://metal3/${consumed_bmh}/${metal3machine}"
-# Add providerID to machine
-patch="{\"spec\":{\"providerID\":\"${provider_id}\"}}"
-kubectl -n metal3 patch machine "${machine}" --type='merge' -p "${patch}"
-# Add providerID to metal3machine
-kubectl -n metal3 patch m3m "${metal3machine}" --type='merge' -p "${patch}"
-
-# Set nodeRef
-patch="{\"status\":{\"nodeRef\":{\"apiVersion\": \"v1\", \"name\": \"${machine}\", \"uid\": \"4026e005-2358-411b-a06f-3046af577901\"}}}"
-kubectl -n metal3 patch machine "${machine}" --subresource='status' --type='merge' -p "${patch}"
-# Mark m3m as ready
-kubectl -n metal3 patch m3m "${metal3machine}" --subresource='status' --type='merge' -p '{"status":{"ready": true}}'
+# Check result
+clusterctl -n metal3 describe cluster test
 ```
 
-Cluster, m3cluster, machine, m3m, bmh all fine.
+### Scaling
 
-```console
-vscode ➜ /workspaces/baremetal-operator (lentzi90/scaling-experiments ✗) $ k -n metal3 get cluster
-NAME   PHASE         AGE     VERSION
-test   Provisioned   5h46m
-vscode ➜ /workspaces/baremetal-operator (lentzi90/scaling-experiments ✗) $ k -n metal3 get m3cluster
-NAME   AGE     READY   ERROR   CLUSTER   ENDPOINT
-test   5h46m   true            test      {"host":"127.0.0.1","port":6443}
-vscode ➜ /workspaces/baremetal-operator (lentzi90/scaling-experiments ✗) $ k -n metal3 get machine
-NAME         CLUSTER   NODENAME     PROVIDERID                                         PHASE     AGE     VERSION
-test-8kmk2   test      test-8kmk2   metal3://metal3/worker-3/test-controlplane-gsphk   Running   5h46m   v1.25.3
-vscode ➜ /workspaces/baremetal-operator (lentzi90/scaling-experiments ✗) $ k -n metal3 get m3m
-NAME                      AGE     PROVIDERID                                         READY   CLUSTER   PHASE
-test-controlplane-gsphk   5h46m   metal3://metal3/worker-3/test-controlplane-gsphk   true    test
-vscode ➜ /workspaces/baremetal-operator (lentzi90/scaling-experiments ✗) $ k -n metal3 get bmh
-NAME       STATE         CONSUMER                  ONLINE   ERROR   AGE
-worker-1   available                               true             6h28m
-worker-2   available                               true             6h28m
-worker-3   provisioned   test-controlplane-gsphk   true             6h28m
+```bash
+kubectl -n metal3 scale md test --replicas=x
+
+# Find provisioning machine
+provisioning_machine="$(kubectl -n metal3 get machine -o json | jq -r '.items[] | select(.status.phase == "Provisioning") | .metadata.name')"
+# Find UID of BMH by checking the annotation of the m3m that does not yet have a providerID
+bmh_namespace_name="$(kubectl -n metal3 get m3m -o json | jq -r '.items[] | select(.spec | has("providerID") | not) | .metadata.annotations."metal3.io/BareMetalHost"')"
+bmh_name="${bmh_namespace_name#*/}"
+bmh_uid="$(kubectl -n metal3 get bmh "${bmh_name}" -o jsonpath="{.metadata.uid}")"
+sed "s/fake-node/${provisioning_machine}/g" examples/fake-node.yaml > temp-node.yaml
+sed -i "s/fake-uuid/${bmh_uid}/g" temp-node.yaml
+kubectl --kubeconfig=kubeconfig-test.yaml create -f temp-node.yaml
 ```
-
-However, the KCP cannot go to ready until there is a real API server to talk to.
-
-TODO:
-
-- How to make the KCP happy? For ultimate scaling, maybe envtest?
