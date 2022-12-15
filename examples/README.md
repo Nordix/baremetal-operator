@@ -172,3 +172,13 @@ sed "s/fake-node/${provisioning_machine}/g" examples/fake-node.yaml > temp-node.
 sed -i "s/fake-uuid/${bmh_uid}/g" temp-node.yaml
 kubectl --kubeconfig=kubeconfig-test.yaml create -f temp-node.yaml
 ```
+
+### Scaling with fake-controller
+
+```bash
+# Start the fake-controller in a separate terminal
+./examples/fake-controller.sh
+
+# Scale the MD and watch the Machines successfully provision!
+kubectl -n metal3 scale md test --replicas=x
+```
