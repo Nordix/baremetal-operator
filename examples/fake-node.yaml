@@ -11,7 +11,7 @@ metadata:
     kubernetes.io/arch: amd64
     kubernetes.io/hostname: fake-node
     kubernetes.io/os: linux
-    node-role.kubernetes.io/control-plane: ""
+    # node-role.kubernetes.io/control-plane: ""
     node.kubernetes.io/exclude-from-external-load-balancers: ""
     metal3.io/uuid: fake-uuid
   name: fake-node

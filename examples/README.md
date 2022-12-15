@@ -149,6 +149,7 @@ bmh_uid="$(kubectl -n metal3 get bmh "${bmh_name}" -o jsonpath="{.metadata.uid}"
 sed "s/fake-node/${machine}/g" examples/fake-node.yaml > temp-node.yaml
 sed -i "s/fake-uuid/${bmh_uid}/g" temp-node.yaml
 kubectl --kubeconfig=kubeconfig-test.yaml create -f temp-node.yaml
+kubectl --kubeconfig=kubeconfig-test.yaml label node "${machine}" node-role.kubernetes.io/control-plane=""
 # Upload kubeadm config to configmap. This will mark the KCP as initialized.
 kubectl --kubeconfig=kubeconfig-test.yaml -n kube-system create cm kubeadm-config \
   --from-file=ClusterConfiguration=examples/kubeadm-config.yaml
@@ -182,3 +183,8 @@ kubectl --kubeconfig=kubeconfig-test.yaml create -f temp-node.yaml
 # Scale the MD and watch the Machines successfully provision!
 kubectl -n metal3 scale md test --replicas=x
 ```
+
+## Caveats
+
+- The KCP will have some issues since it is not "real", including unknown health for etcd and such.
+  This also means that scaling the KCP does not work.
