@@ -170,12 +170,12 @@ metadata:
   namespace: metal3
 spec:
   clusterName: test
-  metaData:
-    objectNames:
-      - key: name
-        object: machine
-      - key: local-hostname
-        object: machine
+  # metaData:
+  #   objectNames:
+  #     - key: name
+  #       object: machine
+  #     - key: local-hostname
+  #       object: machine
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: Metal3DataTemplate
@@ -184,9 +184,9 @@ metadata:
   namespace: metal3
 spec:
   clusterName: test
-  metaData:
-    objectNames:
-      - key: name
-        object: machine
-      - key: local-hostname
-        object: machine
+  # metaData:
+  #   objectNames:
+  #     - key: name
+  #       object: machine
+  #     - key: local-hostname
+  #       object: machine

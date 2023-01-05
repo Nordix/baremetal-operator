@@ -1,0 +1,18 @@
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: Metal3MachineTemplate
+metadata:
+  name: test-workers-new
+  namespace: metal3
+spec:
+  nodeReuse: false
+  template:
+    spec:
+      automatedCleaningMode: metadata
+      dataTemplate:
+        name: test-workers-template
+      image:
+        checksum: 97830b21ed272a3d854615beb54cf005
+        checksumType: md5
+        format: raw
+        url: http://172.22.0.1/images/rhcos-ootpa-latest-new.qcow2

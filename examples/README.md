@@ -65,7 +65,7 @@ clusterctl init --infrastructure=metal3
 CONTAINER_RUNTIME=docker make run-test-mode
 
 # Create BMHs
-./examples/produce-available-hosts.sh 3 > test-hosts.yaml
+./examples/produce-available-hosts.sh 1000 > test-hosts.yaml
 kubectl create namespace metal3
 kubectl -n metal3 apply -f test-hosts.yaml
 
@@ -188,3 +188,290 @@ kubectl -n metal3 scale md test --replicas=x
 
 - The KCP will have some issues since it is not "real", including unknown health for etcd and such.
   This also means that scaling the KCP does not work.
+
+There is some kind of issue when doing rolling upgrades.
+Probably something to do with workload cluster Nodes not deleted or there is some race condition in BMO when doing rolling upgrades.
+
+```console
+$ k -n metal3 get bmh | grep provisioning
+worker-465    deprovisioning   test-workers-6llbf        false            21h
+worker-604    provisioning     test-workers-new-km5cp    true             21h
+$ k -n metal3 describe bmh worker-604
+Name:         worker-604
+Namespace:    metal3
+Labels:       cluster.x-k8s.io/cluster-name=test
+Annotations:  <none>
+API Version:  metal3.io/v1alpha1
+Kind:         BareMetalHost
+Metadata:
+  Creation Timestamp:  2022-12-21T13:33:10Z
+  Finalizers:
+    baremetalhost.metal3.io
+  Generation:  7
+  Managed Fields:
+    API Version:  metal3.io/v1alpha1
+    Fields Type:  FieldsV1
+    fieldsV1: ...
+    Manager:      main
+    Operation:    Update
+    Time:         2022-12-21T13:33:39Z
+    API Version:  metal3.io/v1alpha1
+    Fields Type:  FieldsV1
+    fieldsV1: ...
+    Manager:      cluster-api-provider-metal3-manager
+    Operation:    Update
+    Time:         2022-12-22T11:04:47Z
+    API Version:  metal3.io/v1alpha1
+    Fields Type:  FieldsV1
+    fieldsV1: ...
+    Manager:      main
+    Operation:    Update
+    Subresource:  status
+    Time:         2022-12-22T11:04:47Z
+  Owner References:
+    API Version:     infrastructure.cluster.x-k8s.io/v1beta1
+    Controller:      true
+    Kind:            Metal3Machine
+    Name:            test-workers-new-km5cp
+    UID:             5b2bd790-1b26-4622-a136-403cd774eed3
+  Resource Version:  166219
+  UID:               f671c527-f274-4ea1-a831-1508a75f34dd
+Spec:
+  Automated Cleaning Mode:  metadata
+  Bmc:
+    Address:           libvirt://192.168.122.604:6233/
+    Credentials Name:  worker-604-bmc-secret
+  Consumer Ref:
+    API Version:  infrastructure.cluster.x-k8s.io/v1beta1
+    Kind:         Metal3Machine
+    Name:         test-workers-new-km5cp
+    Namespace:    metal3
+  Image:
+    Checksum:       97830b21ed272a3d854615beb54cf005
+    Checksum Type:  md5
+    Format:         raw
+    URL:            http://172.22.0.1/images/rhcos-ootpa-latest-new.qcow2
+  Meta Data:
+    Name:       test-workers-new-km5cp-metadata
+    Namespace:  metal3
+  Online:       true
+  User Data:
+    Name:       test-workers-w52jh
+    Namespace:  metal3
+Status:
+  Error Count:    0
+  Error Message:
+  Good Credentials:
+    Credentials:
+      Name:               worker-604-bmc-secret
+      Namespace:          metal3
+    Credentials Version:  166195
+  Hardware: ...
+  Hardware Profile:  libvirt
+  Last Updated:      2022-12-22T11:04:47Z
+  Operation History:
+    Deprovision:
+      End:    2022-12-22T10:42:32Z
+      Start:  2022-12-22T10:41:13Z
+    Inspect:
+      End:    2022-12-21T13:39:06Z
+      Start:  2022-12-21T13:37:26Z
+    Provision:
+      End:    <nil>
+      Start:  2022-12-22T11:04:47Z
+    Register:
+      End:             2022-12-22T11:04:47Z
+      Start:           2022-12-22T11:04:47Z
+  Operational Status:  OK
+  Powered On:          false
+  Provisioning:
+    ID:         temporary-fake-id
+    Boot Mode:  UEFI
+    Image:
+      URL:
+    Raid:
+      Hardware RAID Volumes:  <nil>
+      Software RAID Volumes:
+    Root Device Hints:
+      Device Name:  /dev/vda
+    State:          provisioning
+  Tried Credentials:
+    Credentials:
+      Name:               worker-604-bmc-secret
+      Namespace:          metal3
+    Credentials Version:  166195
+Events:
+  Type    Reason                Age    From                         Message
+  ----    ------                ----   ----                         -------
+  Normal  BMCAccessValidated    28m    metal3-baremetal-controller  Verified access to BMC
+  Normal  DeprovisionComplete   26m    metal3-baremetal-controller  Image deprovisioning completed
+  Normal  BMCAccessValidated    4m39s  metal3-baremetal-controller  Verified access to BMC
+  Normal  ProvisioningComplete  4m39s  metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  4m29s  metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  4m19s  metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  4m9s   metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  3m59s  metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  3m49s  metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  3m39s  metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  3m29s  metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  3m19s  metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  3m9s   metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  2m59s  metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  2m49s  metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  2m39s  metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  2m29s  metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  2m19s  metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  2m9s   metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  119s   metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  109s   metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  99s    metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  89s    metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  79s    metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  69s    metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  59s    metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  49s    metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  39s    metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  29s    metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  19s    metal3-baremetal-controller  Image provisioning completed
+  Normal  ProvisioningComplete  9s     metal3-baremetal-controller  Image provisioning completed
+$ k -n metal3 describe bmh worker-465
+Name:         worker-465
+Namespace:    metal3
+Labels:       cluster.x-k8s.io/cluster-name=test
+Annotations:  <none>
+API Version:  metal3.io/v1alpha1
+Kind:         BareMetalHost
+Metadata:
+  Creation Timestamp:  2022-12-21T13:33:08Z
+  Finalizers:
+    baremetalhost.metal3.io
+  Generation:  8
+  Managed Fields:
+    API Version:  metal3.io/v1alpha1
+    Fields Type:  FieldsV1
+    fieldsV1: ...
+    Manager:      kubectl-client-side-apply
+    Operation:    Update
+    Time:         2022-12-21T13:33:08Z
+    API Version:  metal3.io/v1alpha1
+    Fields Type:  FieldsV1
+    fieldsV1: ...
+    Manager:      cluster-api-provider-metal3-manager
+    Operation:    Update
+    Time:         2022-12-22T11:01:39Z
+    API Version:  metal3.io/v1alpha1
+    Fields Type:  FieldsV1
+    fieldsV1: ...
+    Manager:      main
+    Operation:    Update
+    Subresource:  status
+    Time:         2022-12-22T11:01:42Z
+  Owner References:
+    API Version:     infrastructure.cluster.x-k8s.io/v1beta1
+    Controller:      true
+    Kind:            Metal3Machine
+    Name:            test-workers-6llbf
+    UID:             f1449182-b56f-4d90-8f4c-116543338c63
+  Resource Version:  164924
+  UID:               c04fd3bb-3cca-4860-8ad2-2daa4440f116
+Spec:
+  Automated Cleaning Mode:  metadata
+  Bmc:
+    Address:           libvirt://192.168.122.465:6233/
+    Credentials Name:  worker-465-bmc-secret
+  Consumer Ref:
+    API Version:  infrastructure.cluster.x-k8s.io/v1beta1
+    Kind:         Metal3Machine
+    Name:         test-workers-6llbf
+    Namespace:    metal3
+  Online:         false
+Status:
+  Error Count:    0
+  Error Message:
+  Good Credentials:
+    Credentials:
+      Name:               worker-465-bmc-secret
+      Namespace:          metal3
+    Credentials Version:  164740
+  Hardware: ...
+  Hardware Profile:  libvirt
+  Last Updated:      2022-12-22T11:01:42Z
+  Operation History:
+    Deprovision:
+      End:    <nil>
+      Start:  2022-12-22T11:01:42Z
+    Inspect:
+      End:    2022-12-21T13:38:52Z
+      Start:  2022-12-21T13:37:12Z
+    Provision:
+      End:    2022-12-22T11:00:20Z
+      Start:  2022-12-22T11:00:20Z
+    Register:
+      End:             2022-12-22T11:01:39Z
+      Start:           2022-12-22T11:01:39Z
+  Operational Status:  OK
+  Powered On:          false
+  Provisioning:
+    ID:         temporary-fake-id
+    Boot Mode:  UEFI
+    Image:
+      Checksum:       97830b21ed272a3d854615beb54cf004
+      Checksum Type:  md5
+      Format:         raw
+      URL:            http://172.22.0.1/images/rhcos-ootpa-latest.qcow2
+    Raid:
+      Hardware RAID Volumes:  <nil>
+      Software RAID Volumes:
+    Root Device Hints:
+      Device Name:  /dev/vda
+    State:          deprovisioning
+  Tried Credentials:
+    Credentials:
+      Name:               worker-465-bmc-secret
+      Namespace:          metal3
+    Credentials Version:  164740
+Events:
+  Type    Reason               Age    From                         Message
+  ----    ------               ----   ----                         -------
+  Normal  PowerOn              26m    metal3-baremetal-controller  Host powered on
+  Normal  BMCAccessValidated   26m    metal3-baremetal-controller  Verified access to BMC
+  Normal  DeprovisionComplete  22m    metal3-baremetal-controller  Image deprovisioning completed
+  Normal  BMCAccessValidated   8m50s  metal3-baremetal-controller  Verified access to BMC
+  Normal  PowerOn              8m45s  metal3-baremetal-controller  Host powered on
+  Normal  PowerOn              8m45s  metal3-baremetal-controller  Host powered on
+  Normal  PowerOn              8m44s  metal3-baremetal-controller  Host powered on
+  Normal  PowerOn              8m44s  metal3-baremetal-controller  Host powered on
+  Normal  PowerOn              8m43s  metal3-baremetal-controller  Host powered on
+  Normal  PowerOn              8m42s  metal3-baremetal-controller  Host powered on
+  Normal  PowerOn              8m40s  metal3-baremetal-controller  Host powered on
+  Normal  PowerOn              8m4s   metal3-baremetal-controller  Host powered on
+  Normal  BMCAccessValidated   7m26s  metal3-baremetal-controller  Verified access to BMC
+  Normal  DeprovisionStarted   4m39s  metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   4m29s  metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   4m19s  metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   4m9s   metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   3m59s  metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   3m49s  metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   3m39s  metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   3m29s  metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   3m19s  metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   3m9s   metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   2m59s  metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   2m49s  metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   2m39s  metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   2m29s  metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   2m19s  metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   2m9s   metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   119s   metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   109s   metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   99s    metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   89s    metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   79s    metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   69s    metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   59s    metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   49s    metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   39s    metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   29s    metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   19s    metal3-baremetal-controller  Image deprovisioning started
+  Normal  DeprovisionStarted   9s     metal3-baremetal-controller  Image deprovisioning started
+```
