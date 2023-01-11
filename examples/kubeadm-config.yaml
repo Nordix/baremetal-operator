@@ -16,3 +16,4 @@ etcd:
     peerCertSANs:
       - etcd-0.etcd.metal3.svc.cluster.local
 kubernetesVersion: v1.25.3
+certificatesDir: /tmp/pki

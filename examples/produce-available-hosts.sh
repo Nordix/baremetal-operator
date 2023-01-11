@@ -23,6 +23,7 @@ spec:
   bmc:
     address: libvirt://192.168.122.$i:6233/
     credentialsName: worker-$i-bmc-secret
+  bootMACAddress: "$(printf '00:60:2F:%02X:%02X:%02X\n' $[RANDOM%256] $[RANDOM%256] $[RANDOM%256])"
 EOF
   done
 }
