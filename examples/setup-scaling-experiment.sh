@@ -110,7 +110,7 @@ kubectl -n "${namespace}" wait --for=condition=Available deploy/test-kube-apiser
 # Get kubeconfig
 clusterctl -n "${namespace}" get kubeconfig test > kubeconfig-test.yaml
 # Edit kubeconfig to point to 127.0.0.1:6443 and set up port forward to the pod
-sed -i s/test-kube-apiserver.metal3.svc.cluster.local/127.0.0.1/ kubeconfig-test.yaml
+sed -i s/test-kube-apiserver."${namespace}".svc.cluster.local/127.0.0.1/ kubeconfig-test.yaml
 # In background
 kubectl -n "${namespace}" port-forward svc/test-kube-apiserver 6443 &
 

@@ -43,6 +43,8 @@ export IMAGE_URL="http://172.22.0.1/images/rhcos-ootpa-latest.qcow2"
 export KUBERNETES_VERSION="v1.25.3"
 export WORKERS_KUBEADM_EXTRA_CONFIG=""
 
+cert_expiry_annotation="machine.cluster.x-k8s.io/certificates-expiry"
+expiry="2025-01-02T15:04:05Z07:00"
 
 
 function create_cluster() {
@@ -80,8 +82,9 @@ function create_cluster() {
     sleep 5
   done
 
-  # Set correct node name and apply
   machine="$(kubectl -n "${namespace}" get machine -o jsonpath="{.items[0].metadata.name}")"
+
+  # Set correct node name and apply
   # Find UID of BMH by checking the annotation of the m3m that does not yet have a providerID
   # bmh_namespace_name="$(kubectl -n "${namespace}" get m3m -o json | jq -r '.items[] | select(.spec | has("providerID") | not) | .metadata.annotations."metal3.io/BareMetalHost"')"
   # bmh_name="${bmh_namespace_name#*/}"
@@ -92,6 +95,9 @@ function create_cluster() {
   sed -i "s/fake-uuid/${bmh_uid}/g" "/tmp/${machine}-node.yaml"
   kubectl --kubeconfig=kubeconfig-test.yaml create -f "/tmp/${machine}-node.yaml"
   kubectl --kubeconfig=kubeconfig-test.yaml label node "${machine}" node-role.kubernetes.io/control-plane=""
+
+  # Cleanup temporary files
+  rm "/tmp/${machine}-node.yaml"
 }
 
 num=${1:-10}
