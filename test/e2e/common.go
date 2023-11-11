@@ -15,6 +15,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	metal3api "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 
@@ -207,4 +208,42 @@ func WaitForBmhInPowerState(ctx context.Context, input WaitForBmhInPowerStateInp
 		g.Expect(input.Client.Get(ctx, key, &bmh)).To(Succeed())
 		g.Expect(bmh.Status.PoweredOn).To(Equal(input.State == PoweredOn))
 	}, intervals...).Should(Succeed())
+}
+
+func CreateBMHCredentialsSecret(ctx context.Context, client client.Client, secretNamespace, secretName, username, password string) {
+	bmcCredentials := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: secretNamespace,
+		},
+		StringData: map[string]string{
+			"username": username,
+			"password": password,
+		},
+	}
+	err := client.Create(ctx, &bmcCredentials)
+	Expect(err).NotTo(HaveOccurred())
+}
+
+func WaitForBmhState(ctx context.Context, c client.Client, namespaceName, bmhName string, desiredState metal3api.ProvisioningState, undesiredStates []metal3api.ProvisioningState, intervals []interface{}) error {
+	Eventually(func() (string, error) {
+			var currentBmh metal3api.BareMetalHost
+			err := c.Get(ctx, types.NamespacedName{Name: bmhName, Namespace: namespaceName}, &currentBmh)
+			if err != nil {
+					return "", err
+			}
+
+			currentStatus := currentBmh.Status.Provisioning.State
+
+			// Check if the current state matches any of the undesired states
+			for _, state := range undesiredStates {
+					if (state == "" && currentStatus == "") || currentStatus == state {
+							return "", StopTrying(fmt.Sprintf("Encountered undesired state: %s", currentStatus))
+					}
+			}
+
+			return string(currentStatus), nil
+	}, intervals...).Should(Equal(string(desiredState)))
+
+	return nil
 }

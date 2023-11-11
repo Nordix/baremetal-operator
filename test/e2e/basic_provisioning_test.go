@@ -18,6 +18,7 @@ import (
 var _ = Describe("Provisioning", func() {
 	var (
 		specName       = "provisioning-ops"
+		secretName     = "bmc-credentials"
 		namespace      *corev1.Namespace
 		cancelWatches  context.CancelFunc
 		bmcUser        string
@@ -42,18 +43,8 @@ var _ = Describe("Provisioning", func() {
 
 	It("should provision and then deprovision a BMH", func() {
 		By("Creating a secret with BMH credentials")
-		bmcCredentials := corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "bmc-credentials",
-				Namespace: namespace.Name,
-			},
-			StringData: map[string]string{
-				"username": bmcUser,
-				"password": bmcPassword,
-			},
-		}
-		err := clusterProxy.GetClient().Create(ctx, &bmcCredentials)
-		Expect(err).NotTo(HaveOccurred())
+		client := clusterProxy.GetClient()
+		CreateBMHCredentialsSecret(ctx, client, namespace.Name, secretName, bmcUser, bmcPassword)
 
 		By("Creating a BMH with inspection disabled and hardware details added")
 		bmh := metal3api.BareMetalHost{
@@ -75,22 +66,32 @@ var _ = Describe("Provisioning", func() {
 				BootMACAddress: bootMacAddress,
 			},
 		}
-		err = clusterProxy.GetClient().Create(ctx, &bmh)
+		err := clusterProxy.GetClient().Create(ctx, &bmh)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Waiting for the BMH to be in registering state")
-		WaitForBmhInProvisioningState(ctx, WaitForBmhInProvisioningStateInput{
-			Client: clusterProxy.GetClient(),
-			Bmh:    bmh,
-			State:  metal3api.StateRegistering,
-		}, e2eConfig.GetIntervals(specName, "wait-registering")...)
-
+		err = WaitForBmhState(
+			ctx,
+			clusterProxy.GetClient(),
+			bmh.Namespace,
+			bmh.Name,
+			metal3api.StateRegistering,
+			[]metal3api.ProvisioningState{}, // No undesired states
+			e2eConfig.GetIntervals(specName, "wait-registering"),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		
 		By("Waiting for the BMH to become available")
-		WaitForBmhInProvisioningState(ctx, WaitForBmhInProvisioningStateInput{
-			Client: clusterProxy.GetClient(),
-			Bmh:    bmh,
-			State:  metal3api.StateAvailable,
-		}, e2eConfig.GetIntervals(specName, "wait-available")...)
+		err = WaitForBmhState(
+			ctx,
+			clusterProxy.GetClient(),
+			bmh.Namespace,
+			bmh.Name,
+			metal3api.StateAvailable,
+			[]metal3api.ProvisioningState{}, // No undesired states
+			e2eConfig.GetIntervals(specName, "wait-available"),
+		)
+		Expect(err).NotTo(HaveOccurred())
 
 		By("Patching the BMH to test provisioning")
 		helper, err := patch.NewHelper(&bmh, clusterProxy.GetClient())
@@ -105,18 +106,27 @@ var _ = Describe("Provisioning", func() {
 		Expect(helper.Patch(ctx, &bmh)).To(Succeed())
 
 		By("Waiting for the BMH to be in provisioning state")
-		WaitForBmhInProvisioningState(ctx, WaitForBmhInProvisioningStateInput{
-			Client: clusterProxy.GetClient(),
-			Bmh:    bmh,
-			State:  metal3api.StateProvisioning,
-		}, e2eConfig.GetIntervals(specName, "wait-provisioning")...)
-
+		err = WaitForBmhState(
+			ctx,
+			clusterProxy.GetClient(),
+			bmh.Namespace,
+			bmh.Name,
+			metal3api.StateProvisioning,
+			[]metal3api.ProvisioningState{}, // No undesired states
+			e2eConfig.GetIntervals(specName, "wait-provisioning"),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		
 		By("Waiting for the BMH to become provisioned")
-		WaitForBmhInProvisioningState(ctx, WaitForBmhInProvisioningStateInput{
-			Client: clusterProxy.GetClient(),
-			Bmh:    bmh,
-			State:  metal3api.StateProvisioned,
-		}, e2eConfig.GetIntervals(specName, "wait-provisioned")...)
+		err = WaitForBmhState(
+			ctx,
+			clusterProxy.GetClient(),
+			bmh.Namespace,
+			bmh.Name,
+			metal3api.StateProvisioned,
+			[]metal3api.ProvisioningState{}, // No undesired states
+			e2eConfig.GetIntervals(specName, "wait-provisioned"),
+		)
 
 		By("Triggering the deprovisioning of the BMH")
 		helper, err = patch.NewHelper(&bmh, clusterProxy.GetClient())
@@ -125,18 +135,28 @@ var _ = Describe("Provisioning", func() {
 		Expect(helper.Patch(ctx, &bmh)).To(Succeed())
 
 		By("Waiting for the BMH to be in deprovisioning state")
-		WaitForBmhInProvisioningState(ctx, WaitForBmhInProvisioningStateInput{
-			Client: clusterProxy.GetClient(),
-			Bmh:    bmh,
-			State:  metal3api.StateDeprovisioning,
-		}, e2eConfig.GetIntervals(specName, "wait-deprovisioning")...)
-
+		err = WaitForBmhState(
+			ctx,
+			clusterProxy.GetClient(),
+			bmh.Namespace,
+			bmh.Name,
+			metal3api.StateDeprovisioning,
+			[]metal3api.ProvisioningState{}, // No undesired states
+			e2eConfig.GetIntervals(specName, "wait-deprovisioning"),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		
 		By("Waiting for the BMH to become available again")
-		WaitForBmhInProvisioningState(ctx, WaitForBmhInProvisioningStateInput{
-			Client: clusterProxy.GetClient(),
-			Bmh:    bmh,
-			State:  metal3api.StateAvailable,
-		}, e2eConfig.GetIntervals(specName, "wait-available")...)
+		err = WaitForBmhState(
+			ctx,
+			clusterProxy.GetClient(),
+			bmh.Namespace,
+			bmh.Name,
+			metal3api.StateAvailable,
+			[]metal3api.ProvisioningState{}, // No undesired states
+			e2eConfig.GetIntervals(specName, "wait-available"),
+		)
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	AfterEach(func() {
