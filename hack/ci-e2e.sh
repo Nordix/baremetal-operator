@@ -58,7 +58,11 @@ minikube stop
 minikube start
 
 # Load the BMO e2e image into it
-minikube image load quay.io/metal3-io/baremetal-operator:e2e
+# minikube image load quay.io/metal3-io/baremetal-operator:e2e
+# Temporary workaround for https://github.com/kubernetes/minikube/issues/18021
+docker image save -o /tmp/bmo-e2e.tar quay.io/metal3-io/baremetal-operator:e2e
+minikube image load /tmp/bmo-e2e.tar
+rm /tmp/bmo-e2e.tar
 
 # This IP is defined by the network we created above.
 IP_ADDRESS="192.168.222.1"
@@ -121,22 +125,26 @@ IRONIC_PASSWORD="$(tr -dc 'a-zA-Z0-9' < /dev/urandom | fold -w 12 | head -n 1)"
 IRONIC_INSPECTOR_USERNAME="$(tr -dc 'a-zA-Z0-9' < /dev/urandom | fold -w 12 | head -n 1)"
 IRONIC_INSPECTOR_PASSWORD="$(tr -dc 'a-zA-Z0-9' < /dev/urandom | fold -w 12 | head -n 1)"
 
+# These must be exported so that envsubst can pick them up below
+export IRONIC_USERNAME
+export IRONIC_PASSWORD
+export IRONIC_INSPECTOR_USERNAME
+export IRONIC_INSPECTOR_PASSWORD
+
 for overlay in "${BMO_OVERLAYS[@]}"; do
   echo "${IRONIC_USERNAME}" > "${overlay}/ironic-username"
   echo "${IRONIC_PASSWORD}" > "${overlay}/ironic-password"
-  echo "${IRONIC_INSPECTOR_USERNAME}" > "${overlay}/ironic-inspector-username"
-  echo "${IRONIC_INSPECTOR_PASSWORD}" > "${overlay}/ironic-inspector-password"
+  if [[ "${overlay}" =~ release-0\.[1-5]$ ]]; then
+    echo "${IRONIC_INSPECTOR_USERNAME}" > "${overlay}/ironic-inspector-username"
+    echo "${IRONIC_INSPECTOR_PASSWORD}" > "${overlay}/ironic-inspector-password"
+  fi
 done
 
 envsubst < "${REPO_ROOT}/ironic-deployment/components/basic-auth/ironic-auth-config-tpl" > \
   "${IRONIC_OVERLAY}/ironic-auth-config"
-envsubst < "${REPO_ROOT}/ironic-deployment/components/basic-auth/ironic-inspector-auth-config-tpl" > \
-  "${IRONIC_OVERLAY}/ironic-inspector-auth-config"
 
 echo "IRONIC_HTPASSWD=$(htpasswd -n -b -B "${IRONIC_USERNAME}" "${IRONIC_PASSWORD}")" > \
   "${IRONIC_OVERLAY}/ironic-htpasswd"
-echo "INSPECTOR_HTPASSWD=$(htpasswd -n -b -B "${IRONIC_INSPECTOR_USERNAME}" \
-  "${IRONIC_INSPECTOR_PASSWORD}")" > "${IRONIC_OVERLAY}/ironic-inspector-htpasswd"
 
 
 # We need to gather artifacts/logs before exiting also if there are errors

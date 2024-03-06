@@ -12,9 +12,27 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
+
+func GetEnvOrDefault(key, defaultValue string) string {
+	value, exists := os.LookupEnv(key)
+	if exists && value != "" {
+		return value
+	}
+
+	return defaultValue
+}
+
+func GenerateHtpasswd(username, password string) (string, error) {
+	cmd := exec.Command("htpasswd", "-n", "-b", "-B", username, password)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(string(output)), nil
+}
 
 func GenerateRandomString(length int) (string, error) {
 	b := make([]byte, length)
@@ -26,8 +44,8 @@ func GenerateRandomString(length int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b)[:length], nil
 }
 
-// ReadOrCreateFile reads the content of a file, or creates it with random content if it doesn't exist.
-func ReadOrCreateFile(path string, length int) (string, error) {
+// readOrCreateFile reads the content of a file, or creates it with random content if it doesn't exist.
+func readOrCreateFile(path string, length int) (string, error) {
 	content, err := os.ReadFile(path)
 	if err == nil {
 		return string(content), nil
@@ -45,45 +63,21 @@ func ReadOrCreateFile(path string, length int) (string, error) {
 	return generatedString, nil
 }
 
-// GetEnvOrFile reads an environment variable; if not present, reads from or creates a file.
-func GetEnvOrFile(envName, filePath string, length int) (string, error) {
+// getEnvOrFile reads an environment variable; if not present, reads from or creates a file.
+func getEnvOrFile(envName, filePath string, length int) (string, error) {
 	val, exists := os.LookupEnv(envName)
 	if exists && val != "" {
 		return val, nil
 	}
 
-	return ReadOrCreateFile(filePath, length)
+	return readOrCreateFile(filePath, length)
 }
 
-// GetEnvOrDefault returns the value of the environment variable named by the key
-// or the default value if the environment variable is not set.
-func GetEnvOrDefault(key, defaultValue string) string {
-	value, exists := os.LookupEnv(key)
-	if exists && value != "" {
-		return value
-	}
-
-	return defaultValue
-}
-
-// GenerateHtpasswd generates a htpasswd string for the given username and password.
-func GenerateHtpasswd(username, password string) (string, error) {
-	cmd := exec.Command("htpasswd", "-n", "-b", "-B", username, password)
-	output, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-
-	return strings.TrimSpace(string(output)), nil
-}
-
-// execCommand is a utility function to execute external commands and capture their output.
+// execCommand execute commands and capture their output.
 func execCommand(command string, args ...string) {
 	cmd := exec.Command(command, args...)
 	var stdout, stderr bytes.Buffer
-	// Capture standard output
 	cmd.Stdout = &stdout
-	// Capture standard error
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
@@ -92,10 +86,9 @@ func execCommand(command string, args ...string) {
 	}
 }
 
-// substituteEnvVars takes a template file path and a destination file path,
-// reads the template, substitutes environment variable placeholders,
+// substituteAndWriteEnvVars reads the template, substitutes environment variable placeholders
 // and writes the result to the destination file.
-func substituteEnvVars(templateFilePath, destFilePath string) error {
+func substituteAndWriteEnvVars(templateFilePath, destFilePath string) error {
 	templateContent, err := os.ReadFile(templateFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to read template file: %w", err)
@@ -111,7 +104,7 @@ func substituteEnvVars(templateFilePath, destFilePath string) error {
 	return nil
 }
 
-// changeDirTemporarily changes the current working directory to the specified path and returns a function to revert to the original directory.
+// changeDirTemporarily changes the current working directory and returns a function to revert to the original directory.
 func changeDirTemporarily(newDir string) (revertFunc func(), err error) {
 	originalDir, err := os.Getwd()
 	if err != nil {
@@ -143,9 +136,7 @@ func setupIronicDeployment(deployBasicAuthFlag, deployTLSFlag, deployKeepalivedF
 
 	if deployBasicAuthFlag {
 		execCommand(kustomizePath, "edit", "add", "secret", "ironic-htpasswd", "--from-env-file=ironic-htpasswd")
-		execCommand(kustomizePath, "edit", "add", "secret", "ironic-inspector-htpasswd", "--from-env-file=ironic-inspector-htpasswd")
 		execCommand(kustomizePath, "edit", "add", "secret", "ironic-auth-config", "--from-file=auth-config=ironic-auth-config")
-		execCommand(kustomizePath, "edit", "add", "secret", "ironic-inspector-auth-config", "--from-file=auth-config=ironic-inspector-auth-config")
 
 		if deployTLSFlag {
 			// Basic-auth + TLS is special since TLS also means reverse proxy, which affects basic-auth.
@@ -181,7 +172,6 @@ func setupBMODeployment(deployBasicAuthFlag, deployTLSFlag bool, tempBMOOverlay,
 	if deployBasicAuthFlag {
 		execCommand(kustomizePath, "edit", "add", "component", "../../components/basic-auth")
 		execCommand(kustomizePath, "edit", "add", "secret", "ironic-credentials", "--from-file=username=ironic-username", "--from-file=password=ironic-password")
-		execCommand(kustomizePath, "edit", "add", "secret", "ironic-inspector-credentials", "--from-file=username=ironic-inspector-username", "--from-file=password=ironic-inspector-password")
 	}
 
 	if deployTLSFlag {
@@ -261,14 +251,14 @@ func validateCmd(cmd []string) error {
 	return nil
 }
 
-// pipeCommands directly pipes the output of cmd1 to the input of cmd2.
+// pipeCommands pipes the output of cmd1 to the input of cmd2.
 func pipeCommands(cmd1 *exec.Cmd, baseCmd []string) error {
 	err := validateCmd(baseCmd)
 	if err != nil {
 		return err
 	}
 
-	cmd2 := exec.Command(baseCmd[0], baseCmd[1:]...)
+	cmd2 := exec.Command(baseCmd[0], baseCmd[1:]...) // #nosec G204:gosec
 
 	pipeOut, err := cmd1.StdoutPipe()
 	if err != nil {
@@ -319,7 +309,7 @@ func copyFile(src, dst string) error {
 	return nil
 }
 
-func PrepareKubectlCmdArgs(baseCmd []string, kubectlArgs string) []string {
+func prepareKubectlCmdArgs(baseCmd []string, kubectlArgs string) []string {
 	if kubectlArgs != "" {
 		baseCmd = append(baseCmd, strings.Split(kubectlArgs, " ")...)
 	}
@@ -342,7 +332,7 @@ func deployBMO(tempBMOOverlay, scriptDir, kubectlArgs, kustomizePath string) err
 	execCommand(kustomizePath, "edit", "add", "configmap", "ironic", "--behavior=create", "--from-env-file=ironic.env")
 
 	kubectlBaseCmd := []string{"kubectl", "apply"}
-	kubectlBaseCmd = PrepareKubectlCmdArgs(kubectlBaseCmd, kubectlArgs)
+	kubectlBaseCmd = prepareKubectlCmdArgs(kubectlBaseCmd, kubectlArgs)
 	kustomizeBuildCmd := exec.Command(kustomizePath, "build", tempBMOOverlay)
 	err = pipeCommands(kustomizeBuildCmd, kubectlBaseCmd)
 	if err != nil {
@@ -367,7 +357,7 @@ func replaceAllPlaceholdersInFile(filePath, placeholder, newValue string) error 
 	return nil
 }
 
-func deployIronic(tempIronicOverlay, scriptDir, kubectlArgs, kustomizePath string, deployKeepalivedFlag, deployTLSFlag bool, restartContainerCertificateUpdated, ironicHostIP, mariadbHostIP string) error {
+func deployIronic(tempIronicOverlay, scriptDir, kubectlArgs, kustomizePath string, deployKeepalivedFlag bool, restartContainerCertificateUpdated, ironicHostIP, mariadbHostIP string) error {
 	revertFunc, err := changeDirTemporarily(tempIronicOverlay)
 	if err != nil {
 		log.Fatalf("Failed to change directory %s: %v", tempIronicOverlay, err)
@@ -384,12 +374,6 @@ func deployIronic(tempIronicOverlay, scriptDir, kubectlArgs, kustomizePath strin
 	}
 	ironicBMOConfigmap := filepath.Join(tempIronicOverlay, "ironic_bmo_configmap.env")
 	copyFile(ironicBMOConfigmapSource, ironicBMOConfigmap)
-
-	deployTLSStr := strconv.FormatBool(deployTLSFlag)
-	err = updateOrAppendKeyValueInFile(ironicBMOConfigmap, "INSPECTOR_REVERSE_PROXY_SETUP", deployTLSStr)
-	if err != nil {
-		return err
-	}
 
 	err = updateOrAppendKeyValueInFile(ironicBMOConfigmap, "RESTART_CONTAINER_CERTIFICATE_UPDATED", restartContainerCertificateUpdated)
 	if err != nil {
@@ -415,7 +399,7 @@ func deployIronic(tempIronicOverlay, scriptDir, kubectlArgs, kustomizePath strin
 	}
 
 	kubectlBaseCmd := []string{"kubectl", "apply"}
-	kubectlBaseCmd = PrepareKubectlCmdArgs(kubectlBaseCmd, kubectlArgs)
+	kubectlBaseCmd = prepareKubectlCmdArgs(kubectlBaseCmd, kubectlArgs)
 	kustomizeBuildCmd := exec.Command(kustomizePath, "build", tempIronicOverlay)
 	err = pipeCommands(kustomizeBuildCmd, kubectlBaseCmd)
 	if err != nil {
@@ -446,7 +430,7 @@ func cleanup(deployBasicAuthFlag, deployBMOFlag, deployIronicFlag bool, tempBMOO
 func usage() {
 	fmt.Println(`Usage : deploy [options]
 Options:
-	-h:	Show this help message
+	-h:	show this help message
 	-b:	deploy BMO
 	-i:	deploy Ironic
 	-t:	deploy with TLS enabled
@@ -538,28 +522,17 @@ func main() {
 
 	execCommand("make", "-C", scriptDir, kustomizePath)
 
-	ironicDataDir := os.Getenv("IRONIC_DATA_DIR")
-	if ironicDataDir == "" {
-		ironicDataDir = "/opt/metal3/ironic/"
-	}
+	ironicDataDir := GetEnvOrDefault("IRONIC_DATA_DIR", "/opt/metal3/ironic/")
 	ironicAuthDir := filepath.Join(ironicDataDir, "auth")
 
 	if deployBasicAuthFlag {
-		ironicUsername, err := GetEnvOrFile("IRONIC_USERNAME", filepath.Join(ironicAuthDir, "ironic-username"), 12)
+		ironicUsername, err := getEnvOrFile("IRONIC_USERNAME", filepath.Join(ironicAuthDir, "ironic-username"), 12)
 		if err != nil {
 			log.Fatalf("Error retrieving Ironic username: %v", err)
 		}
-		ironicPassword, err := GetEnvOrFile("IRONIC_PASSWORD", filepath.Join(ironicAuthDir, "ironic-password"), 12)
+		ironicPassword, err := getEnvOrFile("IRONIC_PASSWORD", filepath.Join(ironicAuthDir, "ironic-password"), 12)
 		if err != nil {
 			log.Fatalf("Error retrieving Ironic password: %v", err)
-		}
-		ironicInspectorUsername, err := GetEnvOrFile("IRONIC_INSPECTOR_USERNAME", filepath.Join(ironicAuthDir, "ironic-inspector-username"), 12)
-		if err != nil {
-			log.Fatalf("Error retrieving Ironic Inspector username: %v", err)
-		}
-		ironicInspectorPassword, err := GetEnvOrFile("IRONIC_INSPECTOR_PASSWORD", filepath.Join(ironicAuthDir, "ironic-inspector-password"), 12)
-		if err != nil {
-			log.Fatalf("Error retrieving Ironic Inspector password: %v", err)
 		}
 
 		if deployBMOFlag {
@@ -573,20 +546,10 @@ func main() {
 			if err != nil {
 				log.Fatalf("Failed to write BMO overlay file: %v", err)
 			}
-			tempBMOOverlayPath = filepath.Join(tempBMOOverlay, "ironic-inspector-username")
-			err = os.WriteFile(tempBMOOverlayPath, []byte(ironicInspectorUsername), 0600)
-			if err != nil {
-				log.Fatalf("Failed to write BMO overlay file: %v", err)
-			}
-			tempBMOOverlayPath = filepath.Join(tempBMOOverlay, "ironic-inspector-password")
-			err = os.WriteFile(tempBMOOverlayPath, []byte(ironicInspectorPassword), 0600)
-			if err != nil {
-				log.Fatalf("Failed to write BMO overlay file: %v", err)
-			}
 		}
 
 		if deployIronicFlag {
-			err := substituteEnvVars(
+			err := substituteAndWriteEnvVars(
 				filepath.Join(ironicBasicAuthComponent, "ironic-auth-config-tpl"),
 				filepath.Join(tempIronicOverlay, "ironic-auth-config"),
 			)
@@ -594,33 +557,15 @@ func main() {
 				log.Fatalf("Failed to process ironic-auth-config template: %v", err)
 			}
 
-			err = substituteEnvVars(
-				filepath.Join(ironicBasicAuthComponent, "ironic-inspector-auth-config-tpl"),
-				filepath.Join(tempIronicOverlay, "ironic-inspector-auth-config"),
-			)
-			if err != nil {
-				log.Fatalf("Failed to process ironic-inspector-auth-config template: %v", err)
-			}
-
 			ironicHtpasswd, err := GenerateHtpasswd(ironicUsername, ironicPassword)
 			if err != nil {
 				log.Fatalf("Failed to generate ironic htpasswd: %v", err)
-			}
-			inspectorHtpasswd, err := GenerateHtpasswd(ironicInspectorUsername, ironicInspectorPassword)
-			if err != nil {
-				log.Fatalf("Failed to generate inspector htpasswd: %v", err)
 			}
 
 			htpasswdPath := filepath.Join(tempIronicOverlay, "ironic-htpasswd")
 			err = os.WriteFile(htpasswdPath, []byte("IRONIC_HTPASSWD="+ironicHtpasswd), 0600)
 			if err != nil {
 				log.Fatalf("Failed to write ironic htpasswd file: %v", err)
-			}
-
-			inspectorHtpasswdPath := filepath.Join(tempIronicOverlay, "ironic-inspector-htpasswd")
-			err = os.WriteFile(inspectorHtpasswdPath, []byte("INSPECTOR_HTPASSWD="+inspectorHtpasswd), 0600)
-			if err != nil {
-				log.Fatalf("Failed to write inspector htpasswd file: %v", err)
 			}
 		}
 	}
@@ -637,7 +582,7 @@ func main() {
 	if deployIronicFlag {
 		setupIronicDeployment(deployBasicAuthFlag, deployTLSFlag, deployKeepalivedFlag, deployMariadbFlag, tempIronicOverlay, kustomizePath)
 
-		err = deployIronic(tempIronicOverlay, scriptDir, kubectlArgs, kustomizePath, deployKeepalivedFlag, deployTLSFlag, restartContainerCertificateUpdated, mariaDBHostIP, "IRONIC_HOST_IP_VALUE")
+		err = deployIronic(tempIronicOverlay, scriptDir, kubectlArgs, kustomizePath, deployKeepalivedFlag, restartContainerCertificateUpdated, mariaDBHostIP, "IRONIC_HOST_IP_VALUE")
 		if err != nil {
 			log.Fatalf("Failed to deploy Ironic: %v", err)
 		}

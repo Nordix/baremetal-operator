@@ -1,17 +1,15 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
-	"runtime"
 	"strings"
-	"time"
 
 	"golang.org/x/crypto/ssh"
 
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
 
 	. "github.com/onsi/gomega"
 
@@ -21,29 +19,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	metal3api "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
+	testexec "sigs.k8s.io/cluster-api/test/framework/exec"
 
 	capm3_e2e "github.com/metal3-io/cluster-api-provider-metal3/test/e2e"
 
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/cluster-api/test/framework"
 
-	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/kustomize/api/krusty"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
-)
-
-// LoadImageBehavior indicates the behavior when loading an image.
-type LoadImageBehavior string
-
-const (
-	// MustLoadImage causes a load operation to fail if the image cannot be
-	// loaded.
-	MustLoadImage LoadImageBehavior = "mustLoad"
-
-	// TryLoadImage causes any errors that occur when loading an image to be
-	// ignored.
-	TryLoadImage LoadImageBehavior = "tryLoad"
 )
 
 type PowerState string
@@ -52,111 +37,6 @@ const (
 	PoweredOn  PowerState = "on"
 	PoweredOff PowerState = "off"
 )
-
-// Config defines the configuration of an e2e test environment.
-type Config struct {
-	// Images is a list of container images to load into the Kind cluster.
-	// Note that this not relevant when using an existing cluster.
-	Images []clusterctl.ContainerImage `json:"images,omitempty"`
-
-	// Variables to be used in the tests.
-	Variables map[string]string `json:"variables,omitempty"`
-
-	// Intervals to be used for long operations during tests.
-	Intervals map[string][]string `json:"intervals,omitempty"`
-}
-
-// LoadE2EConfig loads the configuration for the e2e test environment.
-func LoadE2EConfig(configPath string) *Config {
-	configData, err := os.ReadFile(configPath) //#nosec
-	Expect(err).ToNot(HaveOccurred(), "Failed to read the e2e test config file")
-	Expect(configData).ToNot(BeEmpty(), "The e2e test config file should not be empty")
-
-	config := &Config{}
-	Expect(yaml.Unmarshal(configData, config)).To(Succeed(), "Failed to parse the e2e test config file")
-
-	config.Defaults()
-	Expect(config.Validate()).To(Succeed(), "The e2e test config file is not valid")
-
-	return config
-}
-
-// Defaults assigns default values to the object. More specifically:
-// - Images gets LoadBehavior = MustLoadImage if not otherwise specified.
-func (c *Config) Defaults() {
-	imageReplacer := strings.NewReplacer("{OS}", runtime.GOOS, "{ARCH}", runtime.GOARCH)
-	for i := range c.Images {
-		containerImage := &c.Images[i]
-		containerImage.Name = imageReplacer.Replace(containerImage.Name)
-		if containerImage.LoadBehavior == "" {
-			containerImage.LoadBehavior = clusterctl.MustLoadImage
-		}
-	}
-}
-
-// Validate validates the configuration. More specifically:
-// - Image should have name and loadBehavior be one of [mustload, tryload].
-// - Intervals should be valid ginkgo intervals.
-func (c *Config) Validate() error {
-	// Image should have name and loadBehavior be one of [mustload, tryload].
-	for i, containerImage := range c.Images {
-		if containerImage.Name == "" {
-			return errors.Errorf("Container image is missing name: Images[%d].Name=%q", i, containerImage.Name)
-		}
-		switch containerImage.LoadBehavior {
-		case clusterctl.MustLoadImage, clusterctl.TryLoadImage:
-			// Valid
-		default:
-			return errors.Errorf("Invalid load behavior: Images[%d].LoadBehavior=%q", i, containerImage.LoadBehavior)
-		}
-	}
-
-	// Intervals should be valid ginkgo intervals.
-	for k, intervals := range c.Intervals {
-		switch len(intervals) {
-		case 0:
-			return errors.Errorf("Invalid interval: Intervals[%s]=%q", k, intervals)
-		case 1, 2:
-		default:
-			return errors.Errorf("Invalid interval: Intervals[%s]=%q", k, intervals)
-		}
-		for _, i := range intervals {
-			if _, err := time.ParseDuration(i); err != nil {
-				return errors.Errorf("Invalid interval: Intervals[%s]=%q", k, intervals)
-			}
-		}
-	}
-	return nil
-}
-
-// GetIntervals returns the intervals to be applied to a Eventually operation.
-// It searches for [spec]/[key] intervals first, and if it is not found, it searches
-// for default/[key]. If also the default/[key] intervals are not found,
-// ginkgo DefaultEventuallyTimeout and DefaultEventuallyPollingInterval are used.
-func (c *Config) GetIntervals(spec, key string) []interface{} {
-	intervals, ok := c.Intervals[fmt.Sprintf("%s/%s", spec, key)]
-	if !ok {
-		if intervals, ok = c.Intervals[fmt.Sprintf("default/%s", key)]; !ok {
-			return nil
-		}
-	}
-	intervalsInterfaces := make([]interface{}, len(intervals))
-	for i := range intervals {
-		intervalsInterfaces[i] = intervals[i]
-	}
-	return intervalsInterfaces
-}
-
-// GetVariable returns a variable from environment variables or from the e2e config file.
-func (c *Config) GetVariable(varName string) string {
-	if value, ok := os.LookupEnv(varName); ok {
-		return value
-	}
-
-	value, ok := c.Variables[varName]
-	Expect(ok).To(BeTrue(), fmt.Sprintf("Configuration variable '%s' not found", varName))
-	return value
-}
 
 func isUndesiredState(currentState metal3api.ProvisioningState, undesiredStates []metal3api.ProvisioningState) bool {
 	if undesiredStates == nil {
@@ -409,10 +289,10 @@ func PerformSSHBootCheck(e2eConfig *Config, expectedBootMode string, auth ssh.Au
 	Expect(isExpectedBootMode).To(BeTrue(), fmt.Sprintf("Expected booting from %s, but found different mode", expectedBootMode))
 }
 
-// BuildAndApplyKustomizeInput provides input for BuildAndApplyKustomize().
+// BuildAndApplyKustomizationInput provides input for BuildAndApplyKustomize().
 // If WaitForDeployment and/or WatchDeploymentLogs is set to true, then DeploymentName
 // and DeploymentNamespace are expected.
-type BuildAndApplyKustomizeInput struct {
+type BuildAndApplyKustomizationInput struct {
 	// Path to the kustomization to build
 	Kustomization string
 
@@ -437,7 +317,7 @@ type BuildAndApplyKustomizeInput struct {
 	WaitIntervals []interface{}
 }
 
-func (input *BuildAndApplyKustomizeInput) validate() error {
+func (input *BuildAndApplyKustomizationInput) validate() error {
 	// If neither WaitForDeployment nor WatchDeploymentLogs is true, we don't need to validate the input
 	if !input.WaitForDeployment && !input.WatchDeploymentLogs {
 		return nil
@@ -454,9 +334,9 @@ func (input *BuildAndApplyKustomizeInput) validate() error {
 	return nil
 }
 
-// BuildAndApplyKustomize takes input from BuildAndApplyKustomizeInput. It builds the provided kustomization
+// BuildAndApplyKustomization takes input from BuildAndApplyKustomizationInput. It builds the provided kustomization
 // and apply it to the cluster provided by clusterProxy.
-func BuildAndApplyKustomize(ctx context.Context, input *BuildAndApplyKustomizeInput) error {
+func BuildAndApplyKustomization(ctx context.Context, input *BuildAndApplyKustomizationInput) error {
 	Expect(input.validate()).To(BeNil())
 	var err error
 	kustomization := input.Kustomization
@@ -465,6 +345,7 @@ func BuildAndApplyKustomize(ctx context.Context, input *BuildAndApplyKustomizeIn
 	if err != nil {
 		return err
 	}
+
 	err = clusterProxy.Apply(ctx, manifest)
 	if err != nil {
 		return err
@@ -517,4 +398,31 @@ func DeploymentRolledOut(ctx context.Context, clusterProxy framework.ClusterProx
 			(deploy.Status.ObservedGeneration >= desiredGeneration)
 	}
 	return false
+}
+
+// KubectlDelete shells out to kubectl delete.
+func KubectlDelete(ctx context.Context, kubeconfigPath string, resources []byte, args ...string) error {
+	aargs := append([]string{"delete", "--kubeconfig", kubeconfigPath, "-f", "-"}, args...)
+	rbytes := bytes.NewReader(resources)
+	deleteCmd := testexec.NewCommand(
+		testexec.WithCommand("kubectl"),
+		testexec.WithArgs(aargs...),
+		testexec.WithStdin(rbytes),
+	)
+
+	fmt.Printf("Running kubectl %s\n", strings.Join(aargs, " "))
+	stdout, stderr, err := deleteCmd.Run(ctx)
+	fmt.Printf("stderr:\n%s\n", string(stderr))
+	fmt.Printf("stdout:\n%s\n", string(stdout))
+	return err
+}
+
+// BuildAndRemoveKustomization builds the provided kustomization to resources and removes them from the cluster
+// provided by clusterProxy.
+func BuildAndRemoveKustomization(ctx context.Context, kustomization string, clusterProxy framework.ClusterProxy) error {
+	manifest, err := buildKustomizeManifest(kustomization)
+	if err != nil {
+		return err
+	}
+	return KubectlDelete(ctx, clusterProxy.GetKubeconfigPath(), manifest)
 }
