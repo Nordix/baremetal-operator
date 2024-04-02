@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+	"golang.org/x/crypto/bcrypt"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,13 +41,11 @@ func GetEnvOrDefault(key, defaultValue string) string {
 
 // GenerateHtpasswd generates a htpasswd entry for the given username and password.
 func GenerateHtpasswd(username, password string) (string, error) {
-	cmd := exec.Command("htpasswd", "-n", "-b", "-B", username, password)
-	output, err := cmd.Output()
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return "", err
 	}
-
-	return strings.TrimSpace(string(output)), nil
+	return fmt.Sprintf("%s:%s", username, string(hashedPassword)), nil
 }
 
 // GenerateRandomString generates random string of given length
@@ -616,17 +615,17 @@ func main() {
 	}
 
 	if !deployBasicAuthFlag {
-		fmt.Println("WARNING: Deploying without authentication is not recommended")
+		log.Println("WARNING: Deploying without authentication is not recommended")
 	}
 
 	if deployMariadbFlag && !deployTLSFlag {
-		fmt.Println("ERROR: Deploying Ironic with MariaDB without TLS is not supported.")
+		log.Println("ERROR: Deploying Ironic with MariaDB without TLS is not supported.")
 		usage()
 		os.Exit(1)
 	}
 
 	if !deployBMOFlag && !deployIronicFlag {
-		fmt.Println("ERROR: At least one of -b (BMO) or -i (Ironic) must be specified for deployment.")
+		log.Println("ERROR: At least one of -b (BMO) or -i (Ironic) must be specified for deployment.")
 		usage()
 		os.Exit(1)
 	}
