@@ -151,16 +151,6 @@ func WaitForBmhInPowerState(ctx context.Context, input WaitForBmhInPowerStateInp
 	}, intervals...).Should(Succeed())
 }
 
-func buildKustomizeManifest(source string) ([]byte, error) {
-	kustomizer := krusty.MakeKustomizer(krusty.MakeDefaultOptions())
-	fSys := filesys.MakeFsOnDisk()
-	resources, err := kustomizer.Run(fSys, source)
-	if err != nil {
-		return nil, err
-	}
-	return resources.AsYaml()
-}
-
 func CreateSecret(ctx context.Context, client client.Client, secretNamespace, secretName string, data map[string]string) {
 	secret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -381,6 +371,16 @@ func BuildAndApplyKustomization(ctx context.Context, input *BuildAndApplyKustomi
 		})
 	}
 	return nil
+}
+
+func buildKustomizeManifest(source string) ([]byte, error) {
+	kustomizer := krusty.MakeKustomizer(krusty.MakeDefaultOptions())
+	fSys := filesys.MakeFsOnDisk()
+	resources, err := kustomizer.Run(fSys, source)
+	if err != nil {
+		return nil, err
+	}
+	return resources.AsYaml()
 }
 
 func DeploymentRolledOut(ctx context.Context, clusterProxy framework.ClusterProxy, name string, namespace string, desiredGeneration int64) bool {

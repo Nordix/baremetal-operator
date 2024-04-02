@@ -18,6 +18,8 @@ import (
 	"gopkg.in/yaml.v3"
 	"golang.org/x/crypto/bcrypt"
 
+	e2ecommon "github.com/metal3-io/baremetal-operator/test/e2e"
+
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -311,7 +313,7 @@ func getKubeconfigPath() (string, error) {
 // or updates each resource in the cluster accordingly. This function handles the initialization of Kubernetes
 // client configurations, dynamic client, and discovery client to interact with the cluster's API.
 // It leverages a RESTMapper to resolve GroupVersionKind (GVK) to resources and manage them dynamically.
-func applyYAML(yamlFilePath string) error {
+func applyYAML(yamlContent []byte) error {
 	kubeconfigPath, err := getKubeconfigPath()
 	if err != nil {
 		return fmt.Errorf("failed to get kubeconfig: %w", err)
@@ -338,10 +340,10 @@ func applyYAML(yamlFilePath string) error {
 	}
 	mapper := restmapper.NewDiscoveryRESTMapper(grp)
 
-	yamlContent, err := os.ReadFile(filepath.Clean(yamlFilePath))
-	if err != nil {
-		return fmt.Errorf("failed to read YAML file: %w", err)
-	}
+	// yamlContent, err := os.ReadFile(filepath.Clean(yamlFilePath))
+	// if err != nil {
+	// 	return fmt.Errorf("failed to read YAML file: %w", err)
+	// }
 
 	documents, err := splitYAMLDocuments(yamlContent)
 	if err != nil {
@@ -425,29 +427,44 @@ func execCommandToFile(cmd *exec.Cmd, outputPath string) error {
 // deployWithKustomizeAndApply first generates the YAML configuration by running Kustomize build on the overlay directory,
 // then outputs the generated YAML to a temp file within the overlay dir, and then applies
 // the configuration to the Kubernetes cluster specified in the kubeconfig file.
-func deployWithKustomizeAndApply(kustomizePath, overlayPath string) error {
-	yamlOutputPath := filepath.Join(overlayPath, "output.yaml")
+// func deployWithKustomizeAndApply(kustomizePath, overlayPath string) error {
+// 	yamlOutputPath := filepath.Join(overlayPath, "output.yaml")
 
-	defer func() {
-		if removeErr := os.Remove(yamlOutputPath); removeErr != nil {
-			log.Printf("Warning: Failed to remove temporary YAML file %s: %v", yamlOutputPath, removeErr)
-		}
-	}()
+// 	defer func() {
+// 		if removeErr := os.Remove(yamlOutputPath); removeErr != nil {
+// 			log.Printf("Warning: Failed to remove temporary YAML file %s: %v", yamlOutputPath, removeErr)
+// 		}
+// 	}()
 
-	// Generate YAML with kustomize
-	cmd := exec.Command(kustomizePath, "build", overlayPath)
-	err := execCommandToFile(cmd, yamlOutputPath)
+// 	// Generate YAML with kustomize
+// 	cmd := exec.Command(kustomizePath, "build", overlayPath)
+// 	err := execCommandToFile(cmd, yamlOutputPath)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to generate YAML with kustomize: %v", err)
+// 	}
+
+// 	err = applyYAML(yamlOutputPath)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to apply YAML: %v", err)
+// 	}
+
+// 	return nil
+// }
+
+func deployWithKustomizeAndApply(overlayPath string) error {
+	manifest, err := e2ecommon.buildKustomizeManifest(overlayPath)
 	if err != nil {
-		return fmt.Errorf("failed to generate YAML with kustomize: %v", err)
+		return fmt.Errorf("failed to generate manifest with Kustomize: %v", err)
 	}
 
-	err = applyYAML(yamlOutputPath)
+	err = applyYAMLFromBytes(manifest)
 	if err != nil {
-		return fmt.Errorf("failed to apply YAML: %v", err)
+		return fmt.Errorf("failed to apply manifest: %v", err)
 	}
 
 	return nil
 }
+
 
 // copyFile copies the file at src to dst. It opens both files,
 // copies the contents from src to dst, and handles closing both files.
@@ -488,7 +505,7 @@ func deployBMO(tempBMOOverlay, scriptDir, kustomizePath string) error {
 
 	execCommand(kustomizePath, "edit", "add", "configmap", "ironic", "--behavior=create", "--from-env-file=ironic.env")
 
-	err = deployWithKustomizeAndApply(kustomizePath, tempBMOOverlay)
+	err = deployWithKustomizeAndApply(tempBMOOverlay)
 	if err != nil {
 		return err
 	}
@@ -546,7 +563,7 @@ func deployIronic(tempIronicOverlay, scriptDir, kustomizePath string, deployKeep
 		execCommand(kustomizePath, "edit", "add", "configmap", "ironic-bmo-configmap", "--behavior=create", "--from-env-file=ironic_bmo_configmap.env")
 	}
 
-	err = deployWithKustomizeAndApply(kustomizePath, tempIronicOverlay)
+	err = deployWithKustomizeAndApply(tempIronicOverlay)
 	if err != nil {
 		return err
 	}
