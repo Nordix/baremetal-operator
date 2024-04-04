@@ -151,7 +151,7 @@ func WaitForBmhInPowerState(ctx context.Context, input WaitForBmhInPowerStateInp
 	}, intervals...).Should(Succeed())
 }
 
-func buildKustomizeManifest(source string) ([]byte, error) {
+func BuildKustomizeManifest(source string) ([]byte, error) {
 	kustomizer := krusty.MakeKustomizer(krusty.MakeDefaultOptions())
 	fSys := filesys.MakeFsOnDisk()
 	resources, err := kustomizer.Run(fSys, source)
@@ -341,7 +341,7 @@ func BuildAndApplyKustomization(ctx context.Context, input *BuildAndApplyKustomi
 	var err error
 	kustomization := input.Kustomization
 	clusterProxy := input.ClusterProxy
-	manifest, err := buildKustomizeManifest(kustomization)
+	manifest, err := BuildKustomizeManifest(kustomization)
 	if err != nil {
 		return err
 	}

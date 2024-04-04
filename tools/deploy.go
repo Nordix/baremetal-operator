@@ -16,6 +16,11 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+	"golang.org/x/crypto/bcrypt"
+
+	// e2ecommon "./test"
+	e2ecommon "github.com/metal3-io/baremetal-operator/test"
+	// e2ecommon "sigs.k8s.io/cluster-api/test/framework"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,13 +45,11 @@ func GetEnvOrDefault(key, defaultValue string) string {
 
 // GenerateHtpasswd generates a htpasswd entry for the given username and password.
 func GenerateHtpasswd(username, password string) (string, error) {
-	cmd := exec.Command("htpasswd", "-n", "-b", "-B", username, password)
-	output, err := cmd.Output()
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return "", err
 	}
-
-	return strings.TrimSpace(string(output)), nil
+	return fmt.Sprintf("%s:%s", username, string(hashedPassword)), nil
 }
 
 // GenerateRandomString generates random string of given length
@@ -307,7 +310,7 @@ func getKubeconfigPath() (string, error) {
 	return kubeconfigPath, nil
 }
 
-// applyYAML processes and applies a YAML file to the Kubernetes cluster. It reads the specified YAML file,
+// applyYAMLFromBytes processes and applies a YAML file to the Kubernetes cluster. It reads the specified YAML file,
 // splits it into individual resource definitions (if the file contains multiple documents), and then creates
 // or updates each resource in the cluster accordingly. This function handles the initialization of Kubernetes
 // client configurations, dynamic client, and discovery client to interact with the cluster's API.
@@ -449,6 +452,21 @@ func deployWithKustomizeAndApply(kustomizePath, overlayPath string) error {
 
 	return nil
 }
+
+func deployWithKustomizeAndApply(overlayPath string) error {
+	manifest, err := e2ecommon.BuildKustomizeManifest(overlayPath)
+	if err != nil {
+		return fmt.Errorf("failed to generate manifest with Kustomize: %v", err)
+	}
+
+	err = applyYAMLFromBytes(manifest)
+	if err != nil {
+		return fmt.Errorf("failed to apply manifest: %v", err)
+	}
+
+	return nil
+}
+
 
 // copyFile copies the file at src to dst. It opens both files,
 // copies the contents from src to dst, and handles closing both files.
@@ -616,17 +634,17 @@ func main() {
 	}
 
 	if !deployBasicAuthFlag {
-		fmt.Println("WARNING: Deploying without authentication is not recommended")
+		log.Println("WARNING: Deploying without authentication is not recommended")
 	}
 
 	if deployMariadbFlag && !deployTLSFlag {
-		fmt.Println("ERROR: Deploying Ironic with MariaDB without TLS is not supported.")
+		log.Println("ERROR: Deploying Ironic with MariaDB without TLS is not supported.")
 		usage()
 		os.Exit(1)
 	}
 
 	if !deployBMOFlag && !deployIronicFlag {
-		fmt.Println("ERROR: At least one of -b (BMO) or -i (Ironic) must be specified for deployment.")
+		log.Println("ERROR: At least one of -b (BMO) or -i (Ironic) must be specified for deployment.")
 		usage()
 		os.Exit(1)
 	}
