@@ -6,7 +6,7 @@ metadata:
 spec:
   commonName: mariadb-cert
   ipAddresses:
-  - MARIADB_HOST_IP
+  - 127.0.0.1
   issuerRef:
     kind: Issuer
     name: ca-issuer

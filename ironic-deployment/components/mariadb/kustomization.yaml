@@ -3,9 +3,10 @@ kind: Component
 
 resources:
 - certificate.yaml
+- mariadb.yaml
 
 patches:
-- path: mariadb_patch.yaml
+- path: ironic_patch.yaml
 
 secretGenerator:
 - literals:

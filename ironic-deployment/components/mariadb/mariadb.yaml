@@ -1,9 +1,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ironic
+  name: mariadb
 spec:
+  selector:
+    matchLabels:
+      name: mariadb
   template:
+    metadata:
+      labels:
+        name: mariadb
     spec:
       containers:
       - name: mariadb
@@ -53,20 +59,9 @@ spec:
             configMapKeyRef:
               name: ironic-bmo-configmap
               key: RESTART_CONTAINER_CERTIFICATE_UPDATED
-      - name: ironic
-        env:
-        - name: MARIADB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mariadb-password
-              key: password
-        - name: IRONIC_USE_MARIADB
-          value: "true"
-        volumeMounts:
-        - name: cert-mariadb-ca
-          mountPath: "/certs/ca/mariadb"
-          readOnly: true
       volumes:
+      - name: ironic-data-volume
+        emptyDir: {}
       - name: cert-mariadb
         secret:
           secretName: mariadb-cert
