@@ -80,7 +80,7 @@ var _ = Describe("Live-ISO", Label("required", "live-iso"), func() {
 					URL:        imageURL,
 					DiskFormat: pointer.String("live-iso"),
 				},
-				BootMode:              metal3api.Legacy,
+				BootMode:              metal3api.UEFISecureBoot,
 				BootMACAddress:        bmc.BootMacAddress,
 				AutomatedCleaningMode: metal3api.CleaningModeDisabled,
 			},
