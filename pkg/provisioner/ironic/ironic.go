@@ -669,8 +669,8 @@ func (p *ironicProvisioner) setCustomDeployUpdateOptsForNode(ironicNode *nodes.N
 		SetTopLevelOpt("deploy_interface", "custom-agent", ironicNode.DeployInterface)
 }
 
-// getInstanceUpdateOpts constructs InstanceInfo options required to provision a Node in Ironic.
-func (p *ironicProvisioner) getInstanceUpdateOpts(ironicNode *nodes.Node, data provisioner.ProvisionData) *clients.NodeUpdater {
+// getProvisioningInstanceUpdateOptsForNode constructs InstanceInfo and DriverInfo options required to provision a Node in Ironic.
+func (p *ironicProvisioner) getProvisioningInstanceUpdateOptsForNode(ironicNode *nodes.Node, data provisioner.ProvisionData) *clients.NodeUpdater {
 	updater := clients.UpdateOptsBuilder(p.log)
 
 	hasCustomDeploy := data.CustomDeploy != nil && data.CustomDeploy.Method != ""
@@ -693,6 +693,31 @@ func (p *ironicProvisioner) getInstanceUpdateOpts(ironicNode *nodes.Node, data p
 		// Set deploy_interface direct options when not booting a live-iso
 		p.setDirectDeployUpdateOptsForNode(ironicNode, &data.Image, updater)
 	}
+
+	driverOpts := clients.UpdateOptsData{
+		"kernel_append_params": "%default% " + data.PreprovisioningKernelParams,
+	}
+	updater.SetDriverInfoOpts(driverOpts, ironicNode)
+
+	return updater
+}
+
+func (p *ironicProvisioner) getPrepareOptsForNode(ironicNode *nodes.Node, data provisioner.PrepareData) *clients.NodeUpdater {
+	updater := clients.UpdateOptsBuilder(p.log)
+	driverOpts := clients.UpdateOptsData{
+		"kernel_append_params": "%default% " + data.PreprovisioningKernelParams,
+	}
+	updater.SetDriverInfoOpts(driverOpts, ironicNode)
+
+	return updater
+}
+
+func (p *ironicProvisioner) getServicingOptsForNode(ironicNode *nodes.Node, data provisioner.ServicingData) *clients.NodeUpdater {
+	updater := clients.UpdateOptsBuilder(p.log)
+	driverOpts := clients.UpdateOptsData{
+		"kernel_append_params": "%default% " + data.PreprovisioningKernelParams,
+	}
+	updater.SetDriverInfoOpts(driverOpts, ironicNode)
 
 	return updater
 }
@@ -793,9 +818,8 @@ func (p *ironicProvisioner) GetFirmwareComponents() ([]metal3api.FirmwareCompone
 
 func (p *ironicProvisioner) setUpForProvisioning(ironicNode *nodes.Node, data provisioner.ProvisionData) (result provisioner.Result, err error) {
 	p.log.Info("starting provisioning", "node properties", ironicNode.Properties)
-
 	ironicNode, success, result, err := p.tryUpdateNode(ironicNode,
-		p.getInstanceUpdateOpts(ironicNode, data))
+		p.getProvisioningInstanceUpdateOptsForNode(ironicNode, data))
 	if !success {
 		return result, err
 	}
@@ -1043,14 +1067,22 @@ func (p *ironicProvisioner) startManualCleaning(bmcAccess bmc.AccessDetails, iro
 	// Set raid configuration
 	result, err = setTargetRAIDCfg(p, bmcAccess.RAIDInterface(), ironicNode, data)
 	if result.Dirty || result.ErrorMessage != "" || err != nil {
-		return
+		return success, result, err
 	}
 
 	// Build manual clean steps
 	cleanSteps, err := p.buildManualCleaningSteps(bmcAccess, data)
 	if err != nil {
 		result, err = operationFailed(err.Error())
-		return
+		return success, result, err
+	}
+
+	// Updating the kernel_append_params field of the Ironic node's
+	// API drive_info endpoint
+	_, updateSuccess, updateResult, updateErr := p.tryUpdateNode(ironicNode,
+		p.getPrepareOptsForNode(ironicNode, data))
+	if !updateSuccess {
+		return updateSuccess, updateResult, updateErr
 	}
 
 	// Start manual clean
@@ -1065,7 +1097,7 @@ func (p *ironicProvisioner) startManualCleaning(bmcAccess bmc.AccessDetails, iro
 		)
 	}
 	result, err = operationComplete()
-	return
+	return success, result, err
 }
 
 // Prepare remove existing configuration and set new configuration.
