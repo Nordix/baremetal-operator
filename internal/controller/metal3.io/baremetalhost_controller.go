@@ -83,6 +83,15 @@ func (info *reconcileInfo) publishEvent(reason, message string) {
 	info.events = append(info.events, info.host.NewEvent(reason, message))
 }
 
+// return the PreprovisioningKernelParams from the reconciliation info
+func retrievePreprovisioningKernelParamsSpec(info *reconcileInfo) string {
+	preprovisioningKernelParams := ""
+	if info.host.Spec.preprovisioningKernelParams != nil {
+		preprovisioningKernelParams = *info.host.Spec.preprovisioningKernelParams
+	}
+	return preprovisioningKernelParams
+}
+
 // +kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts/finalizers,verbs=update
@@ -839,14 +848,15 @@ func (r *BareMetalHostReconciler) registerHost(prov provisioner.Provisioner, inf
 
 	provResult, provID, err := prov.Register(
 		provisioner.ManagementAccessData{
-			BootMode:                   info.host.Status.Provisioning.BootMode,
-			AutomatedCleaningMode:      info.host.Spec.AutomatedCleaningMode,
-			State:                      info.host.Status.Provisioning.State,
-			CurrentImage:               getCurrentImage(info.host),
-			PreprovisioningImage:       preprovImg,
-			PreprovisioningNetworkData: preprovisioningNetworkData,
-			HasCustomDeploy:            hasCustomDeploy(info.host),
-			DisablePowerOff:            info.host.Spec.DisablePowerOff,
+			BootMode:                    info.host.Status.Provisioning.BootMode,
+			AutomatedCleaningMode:       info.host.Spec.AutomatedCleaningMode,
+			State:                       info.host.Status.Provisioning.State,
+			CurrentImage:                getCurrentImage(info.host),
+			PreprovisioningImage:        preprovImg,
+			PreprovisioningNetworkData:  preprovisioningNetworkData,
+			PreprovisioningKernelParams: retrievePreprovisioningKernelParamsSpec(info),
+			HasCustomDeploy:             hasCustomDeploy(info.host),
+			DisablePowerOff:             info.host.Spec.DisablePowerOff,
 		},
 		credsChanged,
 		info.host.Status.ErrorType == metal3api.RegistrationError)
@@ -972,6 +982,7 @@ func updateRootDeviceHints(host *metal3api.BareMetalHost, info *reconcileInfo) (
 	return
 }
 
+
 // Ensure we have the information about the hardware on the host.
 func (r *BareMetalHostReconciler) actionInspecting(prov provisioner.Provisioner, info *reconcileInfo) actionResult {
 	info.log.Info("inspecting hardware")
@@ -989,7 +1000,8 @@ func (r *BareMetalHostReconciler) actionInspecting(prov provisioner.Provisioner,
 
 	provResult, started, details, err := prov.InspectHardware(
 		provisioner.InspectData{
-			BootMode: info.host.Status.Provisioning.BootMode,
+			BootMode: 					 info.host.Status.Provisioning.BootMode,
+			PreprovisioningKernelParams: retrievePreprovisioningKernelParamsSpec(info),
 		},
 		info.host.Status.ErrorType == metal3api.InspectionError,
 		refresh,
@@ -1159,10 +1171,11 @@ func (r *BareMetalHostReconciler) actionPreparing(prov provisioner.Provisioner, 
 	}
 
 	prepareData := provisioner.PrepareData{
-		TargetRAIDConfig: newStatus.Provisioning.RAID.DeepCopy(),
-		ActualRAIDConfig: info.host.Status.Provisioning.RAID.DeepCopy(),
-		RootDeviceHints:  newStatus.Provisioning.RootDeviceHints.DeepCopy(),
-		FirmwareConfig:   newStatus.Provisioning.Firmware.DeepCopy(),
+		TargetRAIDConfig: 			 newStatus.Provisioning.RAID.DeepCopy(),
+		ActualRAIDConfig: 			 info.host.Status.Provisioning.RAID.DeepCopy(),
+		RootDeviceHints:  			 newStatus.Provisioning.RootDeviceHints.DeepCopy(),
+		FirmwareConfig:   			 newStatus.Provisioning.Firmware.DeepCopy(),
+		PreprovisioningKernelParams: retrievePreprovisioningKernelParamsSpec(info),
 	}
 	// When manual cleaning fails, we think that the existing RAID configuration
 	// is invalid and needs to be reconfigured.
@@ -1284,13 +1297,14 @@ func (r *BareMetalHostReconciler) actionProvisioning(prov provisioner.Provisione
 	}
 
 	provResult, err := prov.Provision(provisioner.ProvisionData{
-		Image:           image,
-		CustomDeploy:    info.host.Spec.CustomDeploy.DeepCopy(),
-		HostConfig:      hostConf,
-		BootMode:        info.host.Status.Provisioning.BootMode,
-		HardwareProfile: hwProf,
-		RootDeviceHints: info.host.Status.Provisioning.RootDeviceHints.DeepCopy(),
-		CPUArchitecture: getHostArchitecture(info.host),
+		Image:           			 image,
+		CustomDeploy:    			 info.host.Spec.CustomDeploy.DeepCopy(),
+		HostConfig:      			 hostConf,
+		BootMode:        			 info.host.Status.Provisioning.BootMode,
+		HardwareProfile: 			 hwProf,
+		RootDeviceHints: 			 info.host.Status.Provisioning.RootDeviceHints.DeepCopy(),
+		CPUArchitecture: 			 getHostArchitecture(info.host),
+		PreprovisioningKernelParams: retrievePreprovisioningKernelParamsSpec(info),
 	}, forceReboot)
 	if err != nil {
 		return actionError{fmt.Errorf("failed to provision: %w", err)}
@@ -1406,6 +1420,7 @@ func (r *BareMetalHostReconciler) actionDeprovisioning(prov provisioner.Provisio
 
 func (r *BareMetalHostReconciler) doServiceIfNeeded(prov provisioner.Provisioner, info *reconcileInfo, hup *metal3api.HostUpdatePolicy) (result actionResult) {
 	servicingData := provisioner.ServicingData{}
+	servicingData.PreprovisioningKernelParams = retrievePreprovisioningKernelParamsSpec(info)
 
 	// (NOTE)janders: since Servicing is an opt-in feature that requires HostUpdatePolicy to be created and set to onReboot
 	// set below booleans to false by default and change to true based on policy settings

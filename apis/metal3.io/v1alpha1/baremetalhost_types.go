@@ -394,6 +394,11 @@ type BareMetalHostSpec struct {
 	// without hardware profiles.
 	HardwareProfile string `json:"hardwareProfile,omitempty"`
 
+	// The value of the kernel commandline argument list that will be passed
+	// to the pre provisioning agent's kernel during boot.
+	// +optional
+	PreprovisioningKernelParams string `json:"preprovisioningKernelParams,omitempty"`
+
 	// Provide guidance about how to choose the device for the image
 	// being provisioned. The default is currently to use /dev/sda as
 	// the root device.

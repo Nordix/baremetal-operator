@@ -54,7 +54,7 @@ func (a *iRMCAccessDetails) DisableCertificateVerification() bool {
 // pre-populated with the access information, and the caller is
 // expected to add any other information that might be needed (such as
 // the kernel and ramdisk locations).
-func (a *iRMCAccessDetails) DriverInfo(bmcCreds Credentials) map[string]interface{} {
+func (a *iRMCAccessDetails) DriverInfo(bmcCreds Credentials, preProvKernParams string) map[string]interface{} {
 	result := map[string]interface{}{
 		"irmc_username": bmcCreds.Username,
 		"irmc_password": bmcCreds.Password,
@@ -62,6 +62,7 @@ func (a *iRMCAccessDetails) DriverInfo(bmcCreds Credentials) map[string]interfac
 		"ipmi_username": bmcCreds.Username,
 		"ipmi_password": bmcCreds.Password,
 		"ipmi_address":  a.hostname,
+		"kernel_append_params": preProvKernParams,
 	}
 
 	if a.disableCertificateVerification {

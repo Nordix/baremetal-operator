@@ -684,7 +684,7 @@ func (p *ironicProvisioner) getImageUpdateOptsForNode(ironicNode *nodes.Node, im
 	}
 }
 
-func (p *ironicProvisioner) getUpdateOptsForNode(ironicNode *nodes.Node, data provisioner.ProvisionData) *clients.NodeUpdater {
+func (p *ironicProvisioner) getProvisioningUpdateOptsForNode(ironicNode *nodes.Node, data provisioner.ProvisionData) *clients.NodeUpdater {
 	updater := clients.UpdateOptsBuilder(p.log)
 
 	hasCustomDeploy := data.CustomDeploy != nil && data.CustomDeploy.Method != ""
@@ -694,10 +694,14 @@ func (p *ironicProvisioner) getUpdateOptsForNode(ironicNode *nodes.Node, data pr
 		"root_device":  devicehints.MakeHintMap(data.RootDeviceHints),
 		"capabilities": buildCapabilitiesValue(ironicNode, data.BootMode),
 	}
+	driverOpts := clients.UpdateOptsData{
+		"kernel_append_params": data.PreprovisioningKernelParams,
+	}
 	if data.CPUArchitecture != "" {
 		opts["cpu_arch"] = data.CPUArchitecture
 	}
 	updater.SetPropertiesOpts(opts, ironicNode)
+	updater.SetDriverInfoOpts(driverOpts, ironicNode)
 
 	return updater
 }
@@ -798,9 +802,8 @@ func (p *ironicProvisioner) GetFirmwareComponents() ([]metal3api.FirmwareCompone
 
 func (p *ironicProvisioner) setUpForProvisioning(ironicNode *nodes.Node, data provisioner.ProvisionData) (result provisioner.Result, err error) {
 	p.log.Info("starting provisioning", "node properties", ironicNode.Properties)
-
 	ironicNode, success, result, err := p.tryUpdateNode(ironicNode,
-		p.getUpdateOptsForNode(ironicNode, data))
+		p.getProvisioningUpdateOptsForNode(ironicNode, data))
 	if !success {
 		return result, err
 	}
@@ -1096,6 +1099,7 @@ func (p *ironicProvisioner) Prepare(data provisioner.PrepareData, unprepared boo
 			if err != nil {
 				result, err = operationFailed(err.Error())
 				return result, started, err
+
 			}
 			if len(cleanSteps) != 0 {
 				p.log.Info("the node needs to be reconfigured", "clean steps", cleanSteps)

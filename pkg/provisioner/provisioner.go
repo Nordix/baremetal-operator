@@ -74,14 +74,15 @@ type PreprovisioningImage struct {
 }
 
 type ManagementAccessData struct {
-	BootMode                   metal3api.BootMode
-	AutomatedCleaningMode      metal3api.AutomatedCleaningMode
-	State                      metal3api.ProvisioningState
-	CurrentImage               *metal3api.Image
-	PreprovisioningImage       *PreprovisioningImage
-	PreprovisioningNetworkData string
-	HasCustomDeploy            bool
-	DisablePowerOff            bool
+	BootMode                    metal3api.BootMode
+	AutomatedCleaningMode       metal3api.AutomatedCleaningMode
+	State                       metal3api.ProvisioningState
+	CurrentImage                *metal3api.Image
+	PreprovisioningImage        *PreprovisioningImage
+	PreprovisioningNetworkData  string
+	PreprovisioningKernelParams string
+	HasCustomDeploy             bool
+	DisablePowerOff             bool
 }
 
 type AdoptData struct {
@@ -89,7 +90,8 @@ type AdoptData struct {
 }
 
 type InspectData struct {
-	BootMode metal3api.BootMode
+	BootMode                    metal3api.BootMode
+	PreprovisioningKernelParams string
 }
 
 // FirmwareConfig and FirmwareSettings are used for implementation of similar functionality
@@ -99,30 +101,33 @@ type InspectData struct {
 // values are vendor specific.
 // TargetFirmwareSettings contains values that the user has changed.
 type PrepareData struct {
-	TargetRAIDConfig         *metal3api.RAIDConfig
-	ActualRAIDConfig         *metal3api.RAIDConfig
-	RootDeviceHints          *metal3api.RootDeviceHints
-	FirmwareConfig           *metal3api.FirmwareConfig
-	TargetFirmwareSettings   metal3api.DesiredSettingsMap
-	ActualFirmwareSettings   metal3api.SettingsMap
-	TargetFirmwareComponents []metal3api.FirmwareUpdate
+	TargetRAIDConfig            *metal3api.RAIDConfig
+	ActualRAIDConfig            *metal3api.RAIDConfig
+	RootDeviceHints             *metal3api.RootDeviceHints
+	FirmwareConfig              *metal3api.FirmwareConfig
+	TargetFirmwareSettings      metal3api.DesiredSettingsMap
+	ActualFirmwareSettings      metal3api.SettingsMap
+	TargetFirmwareComponents    []metal3api.FirmwareUpdate
+	PreprovisioningKernelParams string
 }
 
 type ServicingData struct {
-	FirmwareConfig           *metal3api.FirmwareConfig
-	TargetFirmwareSettings   metal3api.DesiredSettingsMap
-	ActualFirmwareSettings   metal3api.SettingsMap
-	TargetFirmwareComponents []metal3api.FirmwareUpdate
+	FirmwareConfig              *metal3api.FirmwareConfig
+	TargetFirmwareSettings      metal3api.DesiredSettingsMap
+	ActualFirmwareSettings      metal3api.SettingsMap
+	TargetFirmwareComponents    []metal3api.FirmwareUpdate
+	PreprovisioningKernelParams string
 }
 
 type ProvisionData struct {
-	Image           metal3api.Image
-	HostConfig      HostConfigData
-	BootMode        metal3api.BootMode
-	HardwareProfile profile.Profile
-	RootDeviceHints *metal3api.RootDeviceHints
-	CustomDeploy    *metal3api.CustomDeploy
-	CPUArchitecture string
+	Image                       metal3api.Image
+	HostConfig                  HostConfigData
+	BootMode                    metal3api.BootMode
+	HardwareProfile             profile.Profile
+	RootDeviceHints             *metal3api.RootDeviceHints
+	CustomDeploy                *metal3api.CustomDeploy
+	CPUArchitecture             string
+	PreprovisioningKernelParams string
 }
 
 type HTTPHeaders []map[string]string
