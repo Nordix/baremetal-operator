@@ -96,7 +96,9 @@ func (p *ironicProvisioner) Register(data provisioner.ManagementAccessData, cred
 		return result, "", err
 	}
 
-	driverInfo := bmcAccess.DriverInfo(p.bmcCreds)
+	rawPreprovExtraKernParams := data.PreprovisioningExtraKernelParams
+	formattedPreprovExtraKernelParams := fmtPreprovExtraKernParams(rawPreprovExtraKernParams)
+	driverInfo := bmcAccess.DriverInfo(p.bmcCreds, formattedPreprovExtraKernelParams)
 	driverInfo = setExternalURL(p, driverInfo)
 
 	// If we have not found a node yet, we need to create one
@@ -143,6 +145,12 @@ func (p *ironicProvisioner) Register(data provisioner.ManagementAccessData, cred
 		if credentialsChanged || bmcAddressChanged {
 			p.log.Info("Updating driver info because the credentials and/or the BMC address changed")
 			updater.SetTopLevelOpt("driver_info", driverInfo, ironicNode.DriverInfo)
+		} else {
+			p.log.Info("Updating drive info preprovisioningExtraKernelParams field")
+			driverOpts := clients.UpdateOptsData{
+				"kernel_append_params": formattedPreprovExtraKernelParams,
+			}
+			updater.SetDriverInfoOpts(driverOpts, ironicNode)
 		}
 
 		// The updater only updates disable_power_off if it has changed

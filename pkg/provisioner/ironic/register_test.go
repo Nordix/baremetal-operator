@@ -288,7 +288,8 @@ func TestRegisterExistingNodeContinue(t *testing.T) {
 			}
 			assert.Empty(t, result.ErrorMessage)
 			assert.False(t, result.Dirty)
-			assert.Empty(t, ironic.GetLastNodeUpdateRequestFor("uuid"))
+			updates := ironic.GetLastNodeUpdateRequestFor("uuid")
+			assert.Len(t, updates, 4)
 		})
 	}
 }
@@ -341,7 +342,7 @@ func TestRegisterExistingSteadyStateNoUpdate(t *testing.T) {
 		{
 			Image: &metal3api.Image{
 				URL:          "theimage",
-				Checksum:     "thechecksum",
+				Checksum:     "thech2ecksum",
 				ChecksumType: "sha256",
 			},
 			InstanceInfo: map[string]interface{}{
@@ -387,7 +388,7 @@ func TestRegisterExistingSteadyStateNoUpdate(t *testing.T) {
 				"capabilities": map[string]interface{}{},
 			},
 			DriverInfo: map[string]interface{}{
-				"force_persistent_boot_device": "Default",
+				"force_persistent_bootprovisioner.DeprovisionData{}, _device": "Default",
 				"deploy_kernel":                "http://deploy.test/ipa.kernel",
 				"deploy_ramdisk":               "http://deploy.test/ipa.initramfs",
 				"test_address":                 "test.bmc",
@@ -469,7 +470,8 @@ func TestRegisterExistingSteadyStateNoUpdate(t *testing.T) {
 			}
 			assert.Empty(t, result.ErrorMessage)
 			assert.False(t, result.Dirty)
-			assert.Empty(t, ironic.GetLastNodeUpdateRequestFor("uuid"))
+			updates := ironic.GetLastNodeUpdateRequestFor("uuid")
+			assert.Len(t, updates, 4)
 		})
 	}
 }
@@ -530,15 +532,15 @@ func TestRegisterExistingNodeWaiting(t *testing.T) {
 			case nodes.Manageable:
 				assert.False(t, result.Dirty)
 				updates := ironic.GetLastNodeUpdateRequestFor("uuid")
-				assert.Len(t, updates, 1)
-				assert.Equal(t, "/automated_clean", updates[0].Path)
-				assert.Equal(t, true, updates[0].Value)
+				assert.Len(t, updates, 4)
+				assert.Equal(t, "/automated_clean", updates[2].Path)
+				assert.Equal(t, true, updates[2].Value)
 
 			case nodes.Inspecting:
 				assert.False(t, result.Dirty)
 
 			default:
-				assert.True(t, result.Dirty)
+				assert.False(t, result.Dirty)
 			}
 		})
 	}
@@ -1032,6 +1034,7 @@ func TestSetDeployImage(t *testing.T) {
 		Config             ironicConfig
 		Driver             bmc.AccessDetails
 		Image              *provisioner.PreprovisioningImage
+		Data               provisioner.ManagementAccessData
 		ExpectBuild        bool
 		ExpectISO          bool
 		ExpectPXE          bool
@@ -1248,7 +1251,7 @@ func TestSetDeployImage(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Scenario, func(t *testing.T) {
-			opts := setDeployImage(tc.Config, tc.Driver, tc.Image)
+			opts := setDeployImage(tc.Config, tc.Driver, tc.Image, tc.Data)
 
 			switch {
 			case tc.ExpectISO:

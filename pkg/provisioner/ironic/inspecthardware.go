@@ -40,14 +40,18 @@ func (p *ironicProvisioner) abortInspection(ironicNode *nodes.Node) (result prov
 }
 
 func (p *ironicProvisioner) startInspection(data provisioner.InspectData, ironicNode *nodes.Node) (result provisioner.Result, started bool, err error) {
-	_, started, result, err = p.tryUpdateNode(
-		ironicNode,
-		clients.UpdateOptsBuilder(p.log).
-			SetPropertiesOpts(clients.UpdateOptsData{
-				"capabilities": buildCapabilitiesValue(ironicNode, data.BootMode),
-			}, ironicNode),
-	)
+	inspectionNodeUpdater := clients.UpdateOptsBuilder(p.log)
+	inspectionNodeUpdater.SetPropertiesOpts(clients.UpdateOptsData{
+		"capabilities": buildCapabilitiesValue(ironicNode, data.BootMode),
+	}, ironicNode)
+
+	_, started, result, err = p.tryUpdateNode(ironicNode, inspectionNodeUpdater)
+	if err != nil {
+		p.log.Error(err, "failed to update node", "node", ironicNode.UUID)
+		return
+	}
 	if !started {
+		p.log.Info("node update not started", "node", ironicNode.UUID)
 		return
 	}
 

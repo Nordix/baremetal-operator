@@ -83,6 +83,33 @@ func (info *reconcileInfo) publishEvent(reason, message string) {
 	info.events = append(info.events, info.host.NewEvent(reason, message))
 }
 
+// return the PreprovisioningExtraKernelParams from the reconciliation info.
+func (r *BareMetalHostReconciler) retrievePreprovisioningExtraKernelParamsSpec(info *reconcileInfo, prov provisioner.Provisioner) string {
+	if info == nil || info.host == nil {
+		return ""
+	}
+	kernelExtraPreprovParams := info.host.Spec.PreprovisioningExtraKernelParams
+	preprovImgFormats, err := prov.PreprovisioningImageFormats()
+	if err != nil {
+		return kernelExtraPreprovParams
+	}
+	preprovImg, err := r.getPreprovImage(info, preprovImgFormats)
+	if err != nil {
+		return kernelExtraPreprovParams
+	}
+	// Make sure kernel extra params coming from dynamically generater preprov
+	// Image are also represented in every life cycle operation
+	if preprovImg != nil {
+		trimmedParams := strings.TrimSpace(kernelExtraPreprovParams)
+		if trimmedParams == "" {
+			kernelExtraPreprovParams = preprovImg.GeneratedImage.ExtraKernelParams
+		} else {
+			kernelExtraPreprovParams += " " + preprovImg.GeneratedImage.ExtraKernelParams
+		}
+	}
+	return kernelExtraPreprovParams
+}
+
 // +kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts/finalizers,verbs=update
@@ -839,15 +866,16 @@ func (r *BareMetalHostReconciler) registerHost(prov provisioner.Provisioner, inf
 
 	provResult, provID, err := prov.Register(
 		provisioner.ManagementAccessData{
-			BootMode:                   info.host.Status.Provisioning.BootMode,
-			AutomatedCleaningMode:      info.host.Spec.AutomatedCleaningMode,
-			State:                      info.host.Status.Provisioning.State,
-			CurrentImage:               getCurrentImage(info.host),
-			PreprovisioningImage:       preprovImg,
-			PreprovisioningNetworkData: preprovisioningNetworkData,
-			HasCustomDeploy:            hasCustomDeploy(info.host),
-			DisablePowerOff:            info.host.Spec.DisablePowerOff,
-			CPUArchitecture:            getHostArchitecture(info.host),
+			BootMode:                         info.host.Status.Provisioning.BootMode,
+			AutomatedCleaningMode:            info.host.Spec.AutomatedCleaningMode,
+			State:                            info.host.Status.Provisioning.State,
+			CurrentImage:                     getCurrentImage(info.host),
+			PreprovisioningImage:             preprovImg,
+			PreprovisioningNetworkData:       preprovisioningNetworkData,
+			PreprovisioningExtraKernelParams: r.retrievePreprovisioningExtraKernelParamsSpec(info, prov),
+			HasCustomDeploy:                  hasCustomDeploy(info.host),
+			DisablePowerOff:                  info.host.Spec.DisablePowerOff,
+			CPUArchitecture:                  getHostArchitecture(info.host),
 		},
 		credsChanged,
 		info.host.Status.ErrorType == metal3api.RegistrationError)
