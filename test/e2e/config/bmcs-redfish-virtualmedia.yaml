@@ -1,12 +1,93 @@
-- user: admin
-  password: password
-  address: "redfish-virtualmedia+http://192.168.222.1:8000/redfish/v1/Systems/bmo-e2e-0"
-  bootMacAddress: "00:60:2f:31:81:01"
-  name: "bmo-e2e-0"
-  ipAddress: "192.168.222.122"
-- user: admin
-  password: password
-  address: "redfish-virtualmedia+http://192.168.222.1:8000/redfish/v1/Systems/bmo-e2e-1"
-  bootMacAddress: "00:60:2f:31:81:02"
-  name: "bmo-e2e-1"
-  ipAddress: "192.168.222.123"
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: kubevirt.io/v1
+    kind: VirtualMachine
+    metadata:
+      name: bmo-e2e-0
+      namespace: default
+    spec:
+      running: true
+      template:
+        metadata:
+          labels:
+            kubevirt.io/domain: bmo-e2e-0
+        spec:
+          domain:
+            devices:
+              disks:
+                - name: containerdisk
+                  disk:
+                    bus: virtio
+                - name: cloudinitdisk
+                  disk:
+                    bus: virtio
+              interfaces:
+                - name: default
+                  macAddress: "00:60:2f:31:81:01"
+                - name: baremetal-e2e-net
+                  macAddress: "00:60:2f:31:81:01"
+            resources:
+              requests:
+                memory: 2Gi
+          networks:
+            - name: default
+              pod: {}
+            - name: baremetal-e2e-net
+          volumes:
+            - name: containerdisk
+              containerDisk:
+                image: quay.io/kubevirt/cirros-container-disk-demo
+            - name: cloudinitdisk
+              cloudInitNoCloud:
+                userData: |
+                  #cloud-config
+                  users:
+                    - name: admin
+                      ssh-authorized-keys:
+                        - ssh-rsa AAAAB3...example-key
+  - apiVersion: kubevirt.io/v1
+    kind: VirtualMachine
+    metadata:
+      name: bmo-e2e-1
+      namespace: default
+    spec:
+      running: true
+      template:
+        metadata:
+          labels:
+            kubevirt.io/domain: bmo-e2e-1
+        spec:
+          domain:
+            devices:
+              disks:
+                - name: containerdisk
+                  disk:
+                    bus: virtio
+                - name: cloudinitdisk
+                  disk:
+                    bus: virtio
+              interfaces:
+                - name: default
+                  macAddress: "00:60:2f:31:81:02"
+                - name: baremetal-e2e-net
+                  macAddress: "00:60:2f:31:81:02"
+            resources:
+              requests:
+                memory: 2Gi
+          networks:
+            - name: default
+              pod: {}
+            - name: baremetal-e2e-net
+          volumes:
+            - name: containerdisk
+              containerDisk:
+                image: quay.io/kubevirt/cirros-container-disk-demo
+            - name: cloudinitdisk
+              cloudInitNoCloud:
+                userData: |
+                  #cloud-config
+                  users:
+                    - name: admin
+                      ssh-authorized-keys:
+                        - ssh-rsa AAAAB3...example-key

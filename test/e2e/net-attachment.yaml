@@ -1,0 +1,23 @@
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: baremetal-e2e-net
+  namespace: default
+spec:
+  config: '{
+    "cniVersion": "0.3.1",
+    "name": "baremetal-e2e-net",
+    "type": "bridge",
+    "bridge": "br-baremetal-e2e",
+    "isGateway": true,
+    "ipam": {
+      "type": "host-local",
+      "subnet": "192.168.222.0/24",
+      "rangeStart": "192.168.222.2",
+      "rangeEnd": "192.168.222.199",
+      "routes": [
+        { "dst": "0.0.0.0/0" }
+      ],
+      "gateway": "192.168.222.1"
+    }
+  }'

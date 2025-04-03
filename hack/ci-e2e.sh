@@ -56,8 +56,9 @@ export PATH="/usr/local/go/bin:${PATH}"
 # Build the container image with e2e tag (used in tests)
 IMG=quay.io/metal3-io/baremetal-operator:e2e make docker
 
-virsh -c qemu:///system net-define "${REPO_ROOT}/hack/e2e/net.xml"
-virsh -c qemu:///system net-start baremetal-e2e
+# Comment out libvirt network setup as it's not needed for KubeVirt
+# virsh -c qemu:///system net-define "${REPO_ROOT}/hack/e2e/net.xml"
+# virsh -c qemu:///system net-start baremetal-e2e
 
 # This IP is defined by the network we created above.
 IP_ADDRESS="192.168.222.1"
@@ -66,22 +67,36 @@ IP_ADDRESS="192.168.222.1"
 # our e2e overlays
 export IRONIC_PROVISIONING_IP="${IP_ADDRESS}"
 
+# Comment out vbmctl usage
 # Build vbmctl
-make build-vbmctl
+# make build-vbmctl
 # Create VMs to act as BMHs in the tests.
-./bin/vbmctl --yaml-source-file "${E2E_BMCS_CONF_FILE}"
+# ./bin/vbmctl --yaml-source-file "${E2E_BMCS_CONF_FILE}"
+
+# Install KubeVirt if not already installed
+kubectl apply -f https://github.com/kubevirt/kubevirt/releases/latest/download/kubevirt-operator.yaml
+kubectl apply -f https://github.com/kubevirt/kubevirt/releases/latest/download/kubevirt-cr.yaml
+kubectl wait --for=condition=Available -n kubevirt deployments/kubevirt-operator --timeout=300s
+
+# Apply the custom network attachment definition
+kubectl apply -f "${REPO_ROOT}/test/e2e/net-attachment.yaml"
+
+# Create KubeVirt VMs to act as BMHs in the tests
+kubectl apply -f "${E2E_BMCS_CONF_FILE}"
+
+# Wait for VMs to be ready
+kubectl wait --for=condition=Ready vms --all --timeout=300s
 
 if [[ "${BMO_E2E_EMULATOR}" == "vbmc" ]]; then
-  # Start VBMC
+  # Start VBMC for KubeVirt VMs
   docker run --name vbmc --network host -d \
     -v /var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock \
     -v /var/run/libvirt/libvirt-sock-ro:/var/run/libvirt/libvirt-sock-ro \
     quay.io/metal3-io/vbmc
 
-  readarray -t BMCS < <(yq e -o=j -I=0 '.[]' "${E2E_BMCS_CONF_FILE}")
-  for bmc in "${BMCS[@]}"; do
-    address=$(echo "${bmc}" | jq -r '.address')
-    hostName=$(echo "${bmc}" | jq -r '.name')
+  kubectl get vms -o json | jq -c '.items[]' | while read -r vm; do
+    address=$(echo "${vm}" | jq -r '.status.interfaces[0].ipAddress')
+    hostName=$(echo "${vm}" | jq -r '.metadata.name')
     vbmc_port="${address##*:}"
     "${REPO_ROOT}/tools/bmh_test/vm2vbmc.sh" "${hostName}" "${vbmc_port}" "${IP_ADDRESS}"
   done
@@ -89,13 +104,12 @@ if [[ "${BMO_E2E_EMULATOR}" == "vbmc" ]]; then
 elif [[ "${BMO_E2E_EMULATOR}" == "sushy-tools" ]]; then
   # Sushy-tools variables
   SUSHY_EMULATOR_FILE="${REPO_ROOT}"/test/e2e/sushy-tools/sushy-emulator.conf
-  # Start sushy-tools
+  # Start sushy-tools for KubeVirt VMs
   docker run --name sushy-tools -d --network host \
     -v "${SUSHY_EMULATOR_FILE}":/etc/sushy/sushy-emulator.conf:Z \
     -v /var/run/libvirt:/var/run/libvirt:Z \
     -e SUSHY_EMULATOR_CONFIG=/etc/sushy/sushy-emulator.conf \
     quay.io/metal3-io/sushy-tools:latest sushy-emulator
-
 else
   echo "FATAL: Invalid e2e emulator specified: ${BMO_E2E_EMULATOR}"
   exit 1
