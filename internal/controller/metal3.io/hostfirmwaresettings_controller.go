@@ -121,6 +121,7 @@ func (r *HostFirmwareSettingsReconciler) Reconcile(ctx context.Context, req ctrl
 		if k8serrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
+		reqLogger.Info("HostFirmwareSettingsReconciler :: 0", "RequeueAfter", resourceNotAvailableRetryDelay)
 		return ctrl.Result{Requeue: true, RequeueAfter: resourceNotAvailableRetryDelay}, nil
 	}
 
@@ -156,7 +157,7 @@ func (r *HostFirmwareSettingsReconciler) Reconcile(ctx context.Context, req ctrl
 		} else {
 			msg = err.Error()
 		}
-		reqLogger.Info("provisioner is not ready", "Error", msg, "RequeueAfter", provisionerRetryDelay)
+		reqLogger.Info("HostFirmwareSettingsReconciler :: 1 provisioner is not ready", "Error", msg, "RequeueAfter", provisionerRetryDelay)
 		return ctrl.Result{Requeue: true, RequeueAfter: provisionerRetryDelay}, nil
 	}
 
@@ -165,7 +166,7 @@ func (r *HostFirmwareSettingsReconciler) Reconcile(ctx context.Context, req ctrl
 	// Get the current settings and schema, retry if provisioner returns error
 	currentSettings, schema, err := prov.GetFirmwareSettings(true)
 	if err != nil {
-		reqLogger.Info("provisioner returns error", "Error", err.Error(), "RequeueAfter", provisionerRetryDelay)
+		reqLogger.Info("HostFirmwareSettingsReconciler :: 2 provisioner returns error", "Error", err.Error(), "RequeueAfter", provisionerRetryDelay)
 		return ctrl.Result{Requeue: true, RequeueAfter: provisionerRetryDelay}, nil
 	}
 
@@ -180,8 +181,10 @@ func (r *HostFirmwareSettingsReconciler) Reconcile(ctx context.Context, req ctrl
 	// requeue to run again after delay
 	if meta.IsStatusConditionTrue(info.hfs.Status.Conditions, string(metal3api.FirmwareSettingsChangeDetected)) {
 		// If there is a difference between Spec and Status shorten the query from Ironic so that the Status is updated when cleaning completes
+		reqLogger.Info("HostFirmwareSettingsReconciler :: 3", "RequeueAfter", reconcilerRequeueDelayChangeDetected)
 		return ctrl.Result{Requeue: true, RequeueAfter: reconcilerRequeueDelayChangeDetected}, nil
 	}
+	reqLogger.Info("HostFirmwareSettingsReconciler :: 4", "RequeueAfter", reconcilerRequeueDelay)
 	return ctrl.Result{Requeue: true, RequeueAfter: reconcilerRequeueDelay}, nil
 }
 

@@ -224,7 +224,7 @@ func (r *BareMetalHostReconciler) Reconcile(ctx context.Context, request ctrl.Re
 			msg = err.Error()
 		}
 		provisionerNotReady.Inc()
-		reqLogger.Info("provisioner is not ready", "Error", msg, "RequeueAfter", provisionerNotReadyRetryDelay)
+		reqLogger.Info("BareMetalHostReconciler :: provisioner is not ready", "Error", msg, "RequeueAfter", provisionerNotReadyRetryDelay)
 		return ctrl.Result{Requeue: true, RequeueAfter: provisionerNotReadyRetryDelay}, nil
 	}
 
@@ -365,6 +365,8 @@ func (r *BareMetalHostReconciler) credentialsErrorResult(ctx context.Context, er
 		}
 		r.publishEvent(ctx, request, host.NewEvent("BMCCredentialError", err.Error()))
 
+		reqLogger := r.Log.WithValues("baremetalhost", request.NamespacedName)
+		reqLogger.Info("credentialsErrorResult :: provisioner is not ready", "RequeueAfter", hostErrorRetryDelay)
 		return ctrl.Result{Requeue: true, RequeueAfter: hostErrorRetryDelay}, nil
 	// If a managed Host is missing a BMC address or secret, or
 	// we have found the secret but it is missing the required fields,

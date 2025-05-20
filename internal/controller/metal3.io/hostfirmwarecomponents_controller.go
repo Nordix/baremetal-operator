@@ -147,7 +147,7 @@ func (r *HostFirmwareComponentsReconciler) Reconcile(ctx context.Context, req ct
 		} else {
 			msg = err.Error()
 		}
-		reqLogger.Info("provisioner is not ready", "Error", msg, "RequeueAfter", provisionerRetryDelay)
+		reqLogger.Info("HostFirmwareComponentsReconciler :: 1 provisioner is not ready", "Error", msg, "RequeueAfter", provisionerRetryDelay)
 		return ctrl.Result{Requeue: true, RequeueAfter: provisionerRetryDelay}, nil
 	}
 
@@ -159,7 +159,7 @@ func (r *HostFirmwareComponentsReconciler) Reconcile(ctx context.Context, req ct
 		if errors.Is(err, provisioner.ErrFirmwareUpdateUnsupported) {
 			return ctrl.Result{Requeue: false}, err
 		}
-		reqLogger.Info("provisioner returns error", "Error", err.Error(), "RequeueAfter", provisionerRetryDelay)
+		reqLogger.Info("HostFirmwareComponentsReconciler :: 2 provisioner returns error", "Error", err.Error(), "RequeueAfter", provisionerRetryDelay)
 		return ctrl.Result{Requeue: true, RequeueAfter: provisionerRetryDelay}, err
 	}
 
@@ -173,8 +173,11 @@ func (r *HostFirmwareComponentsReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	if meta.IsStatusConditionTrue(info.hfc.Status.Conditions, string(metal3api.HostFirmwareComponentsChangeDetected)) {
+		reqLogger.Info("HostFirmwareComponentsReconciler :: 3 provisioner returns error", "RequeueAfter", reconcilerRequeueDelayChangeDetected)
 		return ctrl.Result{Requeue: true, RequeueAfter: reconcilerRequeueDelayChangeDetected}, nil
 	}
+
+	reqLogger.Info("HostFirmwareComponentsReconciler :: 4", "RequeueAfter", reconcilerRequeueDelay)
 	return ctrl.Result{Requeue: true, RequeueAfter: reconcilerRequeueDelay}, nil
 }
 

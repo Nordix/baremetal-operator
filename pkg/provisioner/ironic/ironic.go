@@ -1762,6 +1762,7 @@ func (p *ironicProvisioner) RemoveBMCEventSubscriptionForNode(subscription metal
 	err = nodes.DeleteSubscription(p.ctx, p.client, p.nodeID, method, opts).ExtractErr()
 
 	if err != nil {
+		p.debugLog.Info("RemoveBMCEventSubscriptionForNode RequeueAfter")
 		return provisioner.Result{RequeueAfter: subscriptionRequeueDelay}, err
 	}
 	return operationComplete()

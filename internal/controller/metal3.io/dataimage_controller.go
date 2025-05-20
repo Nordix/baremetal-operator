@@ -107,6 +107,7 @@ func (r *DataImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
+		reqLogger.Info("DataImageReconciler 1 ", "RequeueAfter", dataImageRetryDelay)
 		return ctrl.Result{Requeue: true, RequeueAfter: dataImageRetryDelay}, fmt.Errorf("could not load dataImage, %w", err)
 	}
 
@@ -120,12 +121,14 @@ func (r *DataImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				di.Finalizers, metal3api.DataImageFinalizer)
 
 			if err := r.Update(ctx, di); err != nil {
+				reqLogger.Info("DataImageReconciler 2 ", "RequeueAfter", dataImageRetryDelay)
 				return ctrl.Result{Requeue: true, RequeueAfter: dataImageRetryDelay}, fmt.Errorf("failed to update resource after remove finalizer, %w", err)
 			}
 			return ctrl.Result{}, nil
 		}
 
 		// Error reading the object - requeue the request.
+		reqLogger.Info("DataImageReconciler 3 ", "RequeueAfter", dataImageRetryDelay)
 		return ctrl.Result{Requeue: true, RequeueAfter: dataImageRetryDelay}, fmt.Errorf("could not load baremetalhost, %w", err)
 	}
 
@@ -141,9 +144,11 @@ func (r *DataImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// If DataImage exists, add its ownerReference
 	if !ownerReferenceExists(bmh, di) {
 		if err := controllerutil.SetOwnerReference(bmh, di, r.Scheme()); err != nil {
+			reqLogger.Info("DataImageReconciler 4 ", "RequeueAfter", dataImageRetryDelay)
 			return ctrl.Result{Requeue: true, RequeueAfter: dataImageRetryDelay}, fmt.Errorf("could not set bmh as controller, %w", err)
 		}
 		if err := r.Update(ctx, di); err != nil {
+			reqLogger.Info("DataImageReconciler 5 ", "RequeueAfter", dataImageRetryDelay)
 			return ctrl.Result{Requeue: true, RequeueAfter: dataImageRetryDelay}, fmt.Errorf("failure updating dataImage status, %w", err)
 		}
 
@@ -158,6 +163,7 @@ func (r *DataImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// Update dataImage after adding finalizer, requeue in case of failure
 		err := r.Update(ctx, di)
 		if err != nil {
+			reqLogger.Info("DataImageReconciler 6 ", "RequeueAfter", dataImageUpdateDelay)
 			return ctrl.Result{RequeueAfter: dataImageUpdateDelay}, fmt.Errorf("failed to update resource after add finalizer, %w", err)
 		}
 		return ctrl.Result{Requeue: true}, nil
@@ -165,7 +171,7 @@ func (r *DataImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// If the associated BMH is detached, keep requeuing till the annotation is removed
 	if hasDetachedAnnotation(bmh) {
-		reqLogger.Info("the host is detached, not running reconciler")
+		reqLogger.Info("DataImageReconciler :: the host is detached, not running reconciler", "RequeueAfter", dataImageUnmanagedRetryDelay)
 		return ctrl.Result{Requeue: true, RequeueAfter: dataImageUnmanagedRetryDelay}, nil
 	}
 
@@ -183,7 +189,7 @@ func (r *DataImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		} else {
 			msg = err.Error()
 		}
-		reqLogger.Info("provisioner is not ready", "Error", msg, "RequeueAfter", provisionerRetryDelay)
+		reqLogger.Info("DataImageReconciler :: provisioner is not ready", "Error", msg, "RequeueAfter", provisionerRetryDelay)
 		return ctrl.Result{Requeue: true, RequeueAfter: provisionerRetryDelay}, nil
 	}
 
@@ -201,10 +207,12 @@ func (r *DataImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 			// Update dataImage status and requeue
 			if err := r.updateStatus(info); err != nil {
+				reqLogger.Info("DataImageReconciler 7 ", "RequeueAfter", dataImageRetryDelay)
 				return ctrl.Result{Requeue: true, RequeueAfter: dataImageRetryDelay}, fmt.Errorf("failed to update resource status, %w", err)
 			}
 		}
 
+		reqLogger.Info("DataImageReconciler 8 ", "RequeueAfter", dataImageRetryDelay)
 		return ctrl.Result{Requeue: true, RequeueAfter: dataImageUpdateDelay}, nil
 	}
 	di.Status.Error.Message = ""
@@ -224,6 +232,7 @@ func (r *DataImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			di.Finalizers, metal3api.DataImageFinalizer)
 
 		if err := r.Update(ctx, di); err != nil {
+			reqLogger.Info("DataImageReconciler 9 ", "RequeueAfter", dataImageRetryDelay)
 			return ctrl.Result{Requeue: true, RequeueAfter: dataImageRetryDelay}, fmt.Errorf("failed to update resource after remove finalizer, %w", err)
 		}
 		return ctrl.Result{}, nil
@@ -231,6 +240,7 @@ func (r *DataImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Update the latest status fetched from the Node
 	if err := r.updateStatus(info); err != nil {
+		reqLogger.Info("DataImageReconciler 10 ", "RequeueAfter", dataImageRetryDelay)
 		return ctrl.Result{Requeue: true, RequeueAfter: dataImageRetryDelay}, fmt.Errorf("failed to update resource statu, %w", err)
 	}
 

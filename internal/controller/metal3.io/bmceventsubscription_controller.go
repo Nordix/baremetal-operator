@@ -107,7 +107,7 @@ func (r *BMCEventSubscriptionReconciler) Reconcile(ctx context.Context, request 
 		} else {
 			msg = err.Error()
 		}
-		reqLogger.Info("provisioner is not ready", "Error", msg, "RequeueAfter", provisionerNotReadyRetryDelay)
+		reqLogger.Info("BMCEventSubscriptionReconciler :: provisioner is not ready", "Error", msg, "RequeueAfter", provisionerNotReadyRetryDelay)
 		return ctrl.Result{RequeueAfter: provisionerNotReadyRetryDelay}, nil
 	}
 
@@ -136,6 +136,8 @@ func (r *BMCEventSubscriptionReconciler) handleError(ctx context.Context, subscr
 	}
 
 	if requeue {
+		reqLogger := r.Log.WithValues("bmceventsubscription", subscription.Name)
+		reqLogger.Info("handleError :: provisioner is not ready", "RequeueAfter", subscriptionRetryDelay)
 		return ctrl.Result{RequeueAfter: subscriptionRetryDelay}, nil
 	}
 
