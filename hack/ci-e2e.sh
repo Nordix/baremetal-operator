@@ -187,6 +187,25 @@ for overlay in "${IRONIC_OVERLAYS[@]}"; do
   "${overlay}/ironic-auth-config"
 done
 
+kustomize_envsubst() {
+  local kustomize_dir="$1"
+  local file="${kustomize_dir}/kustomization.yaml"
+
+  if [[ ! -f "${file}" ]]; then
+    echo "Error: ${file} does not exist."
+    return 1
+  fi
+
+  local tmp_file
+  tmp_file=$(mktemp)
+
+  envsubst < "${file}" > "${tmp_file}" && mv "${tmp_file}" "${file}"
+  echo "envsubst applied to ${file}"
+}
+
+kustomize_envsubst "${REPO_ROOT}"/test/e2e/data/ironic-standalone-operator/operator
+kustomize_envsubst "${REPO_ROOT}"/test/e2e/data/ironic-standalone-operator/ironic
+
 # We need to gather artifacts/logs before exiting also if there are errors
 set +e
 
