@@ -2284,8 +2284,12 @@ func credentialsFromSecret(bmcCredsSecret *corev1.Secret) *bmc.Credentials {
 	//
 	// which introduces a trailing newline.
 	return &bmc.Credentials{
-		Username: strings.TrimSpace(string(bmcCredsSecret.Data["username"])),
-		Password: strings.TrimSpace(string(bmcCredsSecret.Data["password"])),
+		Username:   strings.TrimSpace(string(bmcCredsSecret.Data["username"])),
+		Password:   strings.TrimSpace(string(bmcCredsSecret.Data["password"])),
+		SSHWakeup:  strings.TrimSpace(string(bmcCredsSecret.Data["sshwakeup"])),
+		SSHUser:    strings.TrimSpace(string(bmcCredsSecret.Data["sshuser"])),
+		SSHAddress: strings.TrimSpace(string(bmcCredsSecret.Data["sshaddress"])),
+		SSHKey:     strings.TrimSpace(string(bmcCredsSecret.Data["sshkey"])),
 	}
 }
 
