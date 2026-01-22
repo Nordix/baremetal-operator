@@ -140,8 +140,29 @@ func (r *BareMetalHostReconciler) Reconcile(ctx context.Context, request ctrl.Re
 	annotations := host.GetAnnotations()
 	if annotations != nil {
 		if _, ok := annotations[metal3api.PausedAnnotation]; ok {
-			reqLogger.Info("host is paused, no work to do")
+			// Log presence of status annotation while paused
+			statusAnnotationPresent := false
+			statusAnnotationLength := 0
+			if statusAnn, hasStatus := annotations[metal3api.StatusAnnotation]; hasStatus {
+				statusAnnotationPresent = true
+				statusAnnotationLength = len(statusAnn)
+			}
+			reqLogger.Info("host is paused, no work to do",
+				"statusAnnotationPresent", statusAnnotationPresent,
+				"statusAnnotationLength", statusAnnotationLength)
 			return ctrl.Result{Requeue: false}, nil
+		}
+	}
+
+	// Log status annotation presence before reconcileHostData
+	if annotations := host.GetAnnotations(); annotations != nil {
+		if statusAnn, hasStatus := annotations[metal3api.StatusAnnotation]; hasStatus {
+			reqLogger.Info("status annotation present before reconcileHostData",
+				"length", len(statusAnn),
+				"hasStatus", r.hostHasStatus(host))
+		} else {
+			reqLogger.Info("status annotation NOT present before reconcileHostData",
+				"hasStatus", r.hostHasStatus(host))
 		}
 	}
 
@@ -157,6 +178,9 @@ func (r *BareMetalHostReconciler) Reconcile(ctx context.Context, request ctrl.Re
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("could not update hardware details: %w", err)
 	} else if hwdUpdated {
+		reqLogger.Info("hardware details updated from HardwareData or annotation",
+			"lastUpdated", host.Status.LastUpdated,
+			"provisioningState", host.Status.Provisioning.State)
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -2182,13 +2206,17 @@ func unmarshalStatusAnnotation(content []byte) (*metal3api.BareMetalHostStatus, 
 // extract host from Status annotation.
 func (r *BareMetalHostReconciler) getHostStatusFromAnnotation(host *metal3api.BareMetalHost) (*metal3api.BareMetalHostStatus, error) {
 	annotations := host.GetAnnotations()
-	content := []byte(annotations[metal3api.StatusAnnotation])
-	if annotations[metal3api.StatusAnnotation] == "" {
-		return nil, errors.New("status annotation not found")
+	if annotations == nil {
+		return nil, errors.New("host has no annotations")
 	}
+	statusAnnotationValue := annotations[metal3api.StatusAnnotation]
+	if statusAnnotationValue == "" {
+		return nil, errors.New("status annotation not found or empty")
+	}
+	content := []byte(statusAnnotationValue)
 	objStatus, err := unmarshalStatusAnnotation(content)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal status annotation (length=%d): %w", len(content), err)
 	}
 	return objStatus, nil
 }
@@ -2364,10 +2392,15 @@ func (r *BareMetalHostReconciler) reconcileHostData(ctx context.Context, host *m
 	err = r.Get(ctx, hardwareDataKey, hardwareData)
 	if err != nil && !k8serrors.IsNotFound(err) {
 		reqLogger.Error(err, "failed to find hardwareData")
+	} else if k8serrors.IsNotFound(err) {
+		reqLogger.Info("hardwareData not found")
+	} else {
+		reqLogger.Info("hardwareData found", "hasHardwareDetails", hardwareData.Spec.HardwareDetails != nil)
 	}
 
 	// Host is being deleted, so we delete the finalizer from the hardwareData to allow its deletion.
 	if !host.DeletionTimestamp.IsZero() {
+		reqLogger.Info("host is being deleted, removing hardwareData finalizer")
 		if controllerutil.ContainsFinalizer(hardwareData, hardwareDataFinalizer) {
 			controllerutil.RemoveFinalizer(hardwareData, hardwareDataFinalizer)
 			reqLogger.Info("removing finalizer from hardwareData")
@@ -2381,12 +2414,23 @@ func (r *BareMetalHostReconciler) reconcileHostData(ctx context.Context, host *m
 	// Check if Status is empty and status annotation is present
 	// Manually restore data.
 	if !r.hostHasStatus(host) {
+		reqLogger.Info("host has no status, checking for status annotation",
+			"lastUpdated", host.Status.LastUpdated,
+			"provisioningState", host.Status.Provisioning.State)
+
 		objStatus, err := r.getHostStatusFromAnnotation(host)
 
-		if err == nil && objStatus != nil {
-			reqLogger.Info("reconstructing Status from hardwareData and annotation")
+		if err != nil {
+			reqLogger.Info("failed to get status from annotation", "error", err)
+		} else if objStatus == nil {
+			reqLogger.Info("status annotation returned nil (annotation may be empty or missing)")
+		} else {
+			reqLogger.Info("reconstructing Status from hardwareData and annotation",
+				"provisioningState", objStatus.Provisioning.State,
+				"provisioningID", objStatus.Provisioning.ID)
 			// hardwareData takes predence over statusAnnotation data
 			if hardwareData.Spec.HardwareDetails != nil && objStatus.HardwareDetails != hardwareData.Spec.HardwareDetails {
+				reqLogger.Info("overriding status hardware details with hardwareData")
 				objStatus.HardwareDetails = hardwareData.Spec.HardwareDetails
 			}
 
@@ -2402,14 +2446,19 @@ func (r *BareMetalHostReconciler) reconcileHostData(ctx context.Context, host *m
 			if errStatus != nil {
 				return ctrl.Result{}, fmt.Errorf("could not restore status from annotation: %w", errStatus)
 			}
+			reqLogger.Info("successfully restored status from annotation")
 			return ctrl.Result{Requeue: true}, nil
 		}
-		reqLogger.V(1).Info("no status cache found")
+	} else {
+		reqLogger.Info("host already has status, skipping annotation restoration",
+			"lastUpdated", host.Status.LastUpdated,
+			"provisioningState", host.Status.Provisioning.State)
 	}
 	// The status annotation is unneeded, as the status subresource is
 	// already present. The annotation data will get outdated, so remove it.
 	annotations := host.GetAnnotations()
 	if _, present := annotations[metal3api.StatusAnnotation]; present {
+		reqLogger.Info("deleting status annotation as status already exists")
 		delete(annotations, metal3api.StatusAnnotation)
 		errStatus := r.Update(ctx, host)
 		if errStatus != nil {
