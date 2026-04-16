@@ -52,16 +52,34 @@ case "${GINKGO_FOCUS,,}" in
     ;;
 esac
 
+# These variables are used to control the script behavior
+CI_E2E_SKIP_INSTALLATION="${CI_E2E_SKIP_INSTALLATION:-false}"
+CI_E2E_SKIP_BUILDING="${CI_E2E_SKIP_BUILDING:-false}"
+CI_E2E_SKIP_SETUP="${CI_E2E_SKIP_SETUP:-false}"
+
+# Ensure common requirements are installed before proceeding with the setup and tests
+ensure_requirements() {
+  "${REPO_ROOT}/hack/e2e/ensure_go.sh"
+  "${REPO_ROOT}/hack/e2e/ensure_htpasswd.sh"
+  # CAPI test framework uses kubectl in the background
+  "${REPO_ROOT}/hack/e2e/ensure_kubectl.sh"
+  "${REPO_ROOT}/hack/e2e/ensure_yq.sh"
+
+  sudo apt-get update
+  sudo apt-get install -y libvirt-dev pkg-config gettext-base
+}
+
+# Build binaries required for the tests
+build_binaries() {
+  IMG=quay.io/metal3-io/baremetal-operator IMG_TAG=e2e make docker
+  make build-vbmctl
+}
+
 # Ensure requirements are installed
 export PATH="/usr/local/go/bin:${PATH}"
-"${REPO_ROOT}/hack/e2e/ensure_go.sh"
-"${REPO_ROOT}/hack/e2e/ensure_htpasswd.sh"
-# CAPI test framework uses kubectl in the background
-"${REPO_ROOT}/hack/e2e/ensure_kubectl.sh"
-"${REPO_ROOT}/hack/e2e/ensure_yq.sh"
-
-sudo apt-get update
-sudo apt-get install -y libvirt-dev pkg-config gettext-base
+if [[ "${CI_E2E_SKIP_INSTALLATION}" != "true" ]]; then
+  ensure_requirements
+fi
 
 # Increase inotify limits to prevent "too many open files" errors.
 # Kind nodes (Docker containers running systemd) consume inotify resources heavily.
@@ -69,9 +87,10 @@ sudo apt-get install -y libvirt-dev pkg-config gettext-base
 sudo sysctl fs.inotify.max_user_watches=1048576
 sudo sysctl fs.inotify.max_user_instances=8192
 
-# Build the container image with e2e tag (used in tests)
-IMG=quay.io/metal3-io/baremetal-operator IMG_TAG=e2e make docker
-
+# Build binaries required for the tests
+if [[ "${CI_E2E_SKIP_BUILDING}" != "true" ]]; then
+  build_binaries
+fi
 
 # We need to create veth pair to connect metal3 net (defined above with vbmctl)
 # and kind docker subnet. Let us start by creating a docker network with
@@ -93,8 +112,11 @@ docker network list
 # Build vbmctl
 make build-vbmctl
 sudo setcap cap_net_admin+epi ./bin/vbmctl
+
 # Create VMs to act as BMHs in the tests and the libvirt network
-./bin/vbmctl -c "${REPO_ROOT}/test/e2e/config/vbmctl.yaml" create bml
+if [[ "${CI_E2E_SKIP_SETUP}" != "true" ]]; then
+  ./bin/vbmctl -c "${REPO_ROOT}/test/e2e/config/vbmctl.yaml" create bml
+fi
 
 # This IP is defined by the network we created above. It is sushy-tools / image
 # server endpoint, not ironic.
@@ -203,10 +225,12 @@ IRSO_IRONIC_AUTH_DIR="${REPO_ROOT}/test/e2e/data/ironic-standalone-operator/comp
 echo "${IRONIC_USERNAME}" > "${IRSO_IRONIC_AUTH_DIR}/ironic-username"
 echo "${IRONIC_PASSWORD}" > "${IRSO_IRONIC_AUTH_DIR}/ironic-password"
 
-# shellcheck disable=SC2016
-SSH_PUB_KEY_CONTENT="${pub_ssh_key}" envsubst '${SSH_PUB_KEY_CONTENT}' < \
-  "${REPO_ROOT}/test/e2e/data/ironic-standalone-operator/ironic/base/ironic.yaml.tmpl" > \
-  "${REPO_ROOT}/test/e2e/data/ironic-standalone-operator/ironic/base/ironic.yaml"
+if [[ "${CI_E2E_SKIP_SETUP}" != "true" ]]; then
+  # shellcheck disable=SC2016
+  SSH_PUB_KEY_CONTENT="${pub_ssh_key}" envsubst '${SSH_PUB_KEY_CONTENT}' < \
+    "${REPO_ROOT}/test/e2e/data/ironic-standalone-operator/ironic/base/ironic.yaml.tmpl" > \
+    "${REPO_ROOT}/test/e2e/data/ironic-standalone-operator/ironic/base/ironic.yaml"
+fi
 
 # We need to gather artifacts/logs before exiting also if there are errors
 set +e
