@@ -113,10 +113,8 @@ if [[ "${BMO_E2E_EMULATOR}" == "vbmc" ]]; then
   done
 
 elif [[ "${BMO_E2E_EMULATOR}" == "sushy-tools" ]]; then
-  # Sushy-tools variables
-  SUSHY_EMULATOR_FILE="${REPO_ROOT}"/test/e2e/sushy-tools/sushy-emulator.conf
   # Start sushy-tools
-  ./bin/vbmctl create bmc-emulator --emulator-type "sushy-tools" --image "quay.io/metal3-io/sushy-tools:latest" --config-file "${SUSHY_EMULATOR_FILE}"
+  ./bin/vbmctl create bmc-emulator --emulator-type "sushy-tools" --image "quay.io/metal3-io/sushy-tools:latest" --listen-address "${IP_ADDRESS}" --listen-port 8000
 else
   echo "FATAL: Invalid e2e emulator specified: ${BMO_E2E_EMULATOR}"
   exit 1
