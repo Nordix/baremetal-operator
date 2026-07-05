@@ -3,7 +3,7 @@ module github.com/metal3-io/baremetal-operator/test
 go 1.25.0
 
 require (
-	github.com/cert-manager/cert-manager v1.20.2
+	github.com/cert-manager/cert-manager v1.20.3
 	github.com/metal3-io/baremetal-operator/apis v0.5.1
 	github.com/metal3-io/baremetal-operator/pkg/hardwareutils v0.5.1
 	github.com/metal3-io/ironic-standalone-operator/api v0.8.2
@@ -12,7 +12,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.28.3
 	github.com/onsi/gomega v1.40.0
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/crypto v0.51.0
+	golang.org/x/crypto v0.52.0
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.35.6
 	k8s.io/apiextensions-apiserver v0.35.6
