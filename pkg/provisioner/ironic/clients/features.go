@@ -47,7 +47,12 @@ func (af AvailableFeatures) Log(logger logr.Logger) {
 		"virtualMediaGET", af.HasVirtualMediaGetAPI(),
 		"disablePowerOff", af.HasDisablePowerOff(),
 		"healthAPI", af.HasHealthAPI(),
+		"disableReboot", af.HasDisableReboot(),
 		"deploymentAbort", af.HasDeploymentAbort())
+}
+
+func (af AvailableFeatures) HasDisableReboot() bool {
+	return af.MaxVersion >= 112 //nolint:mnd
 }
 
 func (af AvailableFeatures) HasVirtualMediaGetAPI() bool {
@@ -67,6 +72,9 @@ func (af AvailableFeatures) HasDeploymentAbort() bool {
 }
 
 func (af AvailableFeatures) ChooseMicroversion() string {
+	if af.HasDisableReboot() {
+		return "1.112"
+	}
 	if af.HasDeploymentAbort() {
 		return "1.110"
 	}
