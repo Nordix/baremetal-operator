@@ -21,6 +21,8 @@ const (
 	defaultInspectInterface = "agent"
 )
 
+var wakeupRe = regexp.MustCompile("wakeup")
+
 func bmcAddressMatches(ironicNode *nodes.Node, driverInfo map[string]any) bool {
 	newAddress := make(map[string]any)
 	ironicAddress := make(map[string]any)
@@ -165,6 +167,14 @@ func (p *ironicProvisioner) Register(ctx context.Context, data provisioner.Manag
 			updater.SetPropertiesOpts(clients.UpdateOptsData{
 				"cpu_arch": data.CPUArchitecture,
 			}, ironicNode)
+		}
+
+		// wakeup drivers require disable_reboot, makes no sense
+		// to use them without this ironic node property set to true
+		if p.availableFeatures.HasDisableReboot() {
+			if wakeupRe.MatchString(bmcAccess.BootInterface()) {
+				updater.SetTopLevelOpt("disable_reboot", true, nil)
+			}
 		}
 
 		// We don't return here because we also have to set the
