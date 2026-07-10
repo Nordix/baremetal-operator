@@ -105,12 +105,44 @@ export IMAGE_URL="http://${IP_ADDRESS}/${IMAGE_FILE}"
 export IMAGE_DIR="${REPO_ROOT}/test/e2e/images"
 mkdir -p "${IMAGE_DIR}"
 
-## Download disk images
+## Download disk images with integrity verification
+# Nordix publishes .sha256 sidecar files alongside each artifact.
+CIRROS_BASEURI="https://artifactory.nordix.org/artifactory/metal3/images/iso"
+ISO_BASEURI="https://artifactory.nordix.org/artifactory/metal3/images/sysrescue"
+
 if [[ ! -f "${IMAGE_DIR}/${IMAGE_FILE}" ]]; then
-    wget --quiet -P "${IMAGE_DIR}/" https://artifactory.nordix.org/artifactory/metal3/images/iso/"${IMAGE_FILE}"
+    curl --proto '=https' --tlsv1.3 -sSfL \
+        --retry 3 --retry-delay 5 --max-time 120 \
+        -o "${IMAGE_DIR}/${IMAGE_FILE}.sha256" \
+        "${CIRROS_BASEURI}/${IMAGE_FILE}.sha256"
+    curl --proto '=https' --tlsv1.3 -sSfL \
+        --retry 3 --retry-delay 5 --max-time 300 \
+        -o "${IMAGE_DIR}/${IMAGE_FILE}" \
+        "${CIRROS_BASEURI}/${IMAGE_FILE}"
+    expected_checksum="$(cat "${IMAGE_DIR}/${IMAGE_FILE}.sha256")"
+    checksum="$(sha256sum "${IMAGE_DIR}/${IMAGE_FILE}" | awk '{print $1;}')"
+    if [[ "${checksum}" != "${expected_checksum}" ]]; then
+        echo >&2 "fatal: ${IMAGE_FILE} checksum '${checksum}' differs from expected '${expected_checksum}'"
+        rm -f "${IMAGE_DIR}/${IMAGE_FILE}" "${IMAGE_DIR}/${IMAGE_FILE}.sha256"
+        exit 1
+    fi
 fi
 if [[ ! -f "${IMAGE_DIR}/${ISO_FILE}" ]]; then
-    wget --quiet -P "${IMAGE_DIR}/" https://artifactory.nordix.org/artifactory/metal3/images/sysrescue/"${ISO_FILE}"
+    curl --proto '=https' --tlsv1.3 -sSfL \
+        --retry 3 --retry-delay 5 --max-time 120 \
+        -o "${IMAGE_DIR}/${ISO_FILE}.sha256" \
+        "${ISO_BASEURI}/${ISO_FILE}.sha256"
+    curl --proto '=https' --tlsv1.3 -sSfL \
+        --retry 3 --retry-delay 5 --max-time 600 \
+        -o "${IMAGE_DIR}/${ISO_FILE}" \
+        "${ISO_BASEURI}/${ISO_FILE}"
+    expected_checksum="$(cat "${IMAGE_DIR}/${ISO_FILE}.sha256")"
+    checksum="$(sha256sum "${IMAGE_DIR}/${ISO_FILE}" | awk '{print $1;}')"
+    if [[ "${checksum}" != "${expected_checksum}" ]]; then
+        echo >&2 "fatal: ${ISO_FILE} checksum '${checksum}' differs from expected '${expected_checksum}'"
+        rm -f "${IMAGE_DIR}/${ISO_FILE}" "${IMAGE_DIR}/${ISO_FILE}.sha256"
+        exit 1
+    fi
 fi
 
 ## Download IPA (Ironic Python Agent) image
@@ -118,9 +150,12 @@ fi
 # This saves time, especially during ironic upgrade tests and also
 # gives us early failure in case there is some issue downloading it.
 IPA_FILE="ipa-centos9-master.tar.gz"
-IPA_BASEURI=https://artifactory.nordix.org/artifactory/openstack-remote/ironic-python-agent/dib/
+IPA_BASEURI="https://artifactory.nordix.org/artifactory/openstack-remote/ironic-python-agent/dib"
 if [[ ! -f "${IMAGE_DIR}/${IPA_FILE}" ]]; then
-    wget --quiet -P "${IMAGE_DIR}/" "${IPA_BASEURI}/${IPA_FILE}"
+    curl --proto '=https' --tlsv1.3 -sSfL \
+        --retry 3 --retry-delay 5 --max-time 600 \
+        -o "${IMAGE_DIR}/${IPA_FILE}" \
+        "${IPA_BASEURI}/${IPA_FILE}"
 fi
 
 # shellcheck disable=SC2016
@@ -199,9 +234,25 @@ pub_ssh_key=$(cut -d " " -f "1,2" "${IMAGE_DIR}/ssh_testkey.pub")
 # Build an ISO image with baked ssh key
 # See https://www.system-rescue.org/scripts/sysrescue-customize/
 # We use the systemrescue ISO and their script for customizing it.
+# Pin to a specific commit.
+#
+# To update these values run: make sysrescue-customize-sha256
+# and copy the output here.
+SYSRESCUE_CUSTOMIZE_COMMIT="aa6dac4bb43382d314fb4bc9cf05f3522541f7cd"
+SYSRESCUE_CUSTOMIZE_SHA256="93065ceb8d96520d0c9efbd769fecb9fe912d747fb344ef90ac4d23ab2fc62cb"
 if [[ ! -f "${IMAGE_DIR}/sysrescue-out.iso" ]];then
     pushd "${IMAGE_DIR}"
-    wget -O sysrescue-customize https://gitlab.com/systemrescue/systemrescue-sources/-/raw/main/airootfs/usr/share/sysrescue/bin/sysrescue-customize?inline=false
+    curl --proto '=https' --tlsv1.3 -sSfL \
+        --retry 3 --retry-delay 5 --max-time 120 \
+        -o sysrescue-customize \
+        "https://gitlab.com/systemrescue/systemrescue-sources/-/raw/${SYSRESCUE_CUSTOMIZE_COMMIT}/airootfs/usr/share/sysrescue/bin/sysrescue-customize"
+    checksum="$(sha256sum sysrescue-customize | awk '{print $1;}')"
+    if [[ "${checksum}" != "${SYSRESCUE_CUSTOMIZE_SHA256}" ]]; then
+        echo >&2 "fatal: sysrescue-customize checksum '${checksum}' differs from expected '${SYSRESCUE_CUSTOMIZE_SHA256}'"
+        rm -f sysrescue-customize
+        popd
+        exit 1
+    fi
     chmod +x sysrescue-customize
 
     mkdir -p recipe/iso_add/sysrescue.d

@@ -150,6 +150,10 @@ verify-e2e-prerequisites: ## Check that required tools exist for e2e tests
 	@echo "Ensure the local environment is ready for e2e tests..."
 	VERIFY_ONLY=1 ./hack/e2e/ensure_e2e_prerequisites.sh
 
+.PHONY: sysrescue-customize-sha256
+sysrescue-customize-sha256: ## Print the commit and SHA-256 for sysrescue-customize (for updating ci-e2e.sh)
+	./hack/e2e/get-sysrescue-customize-sha256.sh
+
 .PHONY: test-e2e
 test-e2e: $(GINKGO) ## Run the end-to-end tests
 	$(GINKGO) -v --trace -poll-progress-after=$(GINKGO_POLL_PROGRESS_AFTER) \

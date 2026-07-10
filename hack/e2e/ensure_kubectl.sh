@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -eu
+set -eu -o pipefail
 
 USR_LOCAL_BIN="/usr/local/bin"
 MINIMUM_KUBECTL_VERSION=v1.34.1
@@ -33,14 +33,47 @@ verify_kubectl_version() {
             return 0
         fi
         if [[ "${OSTYPE}" == "linux-gnu" ]]; then
+            if ! command -v sha256sum &>/dev/null; then
+                echo "ERROR: sha256sum not found" >&2
+                return 1
+            fi
+
             echo "kubectl not found, installing"
-            set -x
-            curl -LO \
-                --create-dirs \
-                --output-dir "/tmp" \
-                "${KUBECTL_DOWNLOAD_URL}/${MINIMUM_KUBECTL_VERSION}/bin/linux/amd64/kubectl"
-            sudo install "/tmp/kubectl" "${USR_LOCAL_BIN}/kubectl"
-            set +x
+            local tmp_dir
+            tmp_dir="$(mktemp -d)"
+            trap 'rm -rf "${tmp_dir}"; trap - RETURN' RETURN
+
+            local BINARY_FILE="kubectl"
+            local URL="${KUBECTL_DOWNLOAD_URL}/${MINIMUM_KUBECTL_VERSION}/bin/linux/amd64/${BINARY_FILE}"
+            local CHECKSUMS_URL="${URL}.sha256"
+
+            # Download checksum file (Kubernetes publishes .sha256 alongside binaries)
+            curl --proto '=https' --tlsv1.3 -sSfL \
+                --retry 3 --retry-delay 5 --max-time 120 \
+                -o "${tmp_dir}/${BINARY_FILE}.sha256" "${CHECKSUMS_URL}"
+
+            # Extract expected checksum (single hash in file)
+            local expected_checksum
+            expected_checksum="$(cat "${tmp_dir}/${BINARY_FILE}.sha256")"
+            if [[ -z "${expected_checksum}" ]]; then
+                echo >&2 "fatal: could not find checksum at ${CHECKSUMS_URL}"
+                return 1
+            fi
+
+            # Download binary with security flags
+            curl --proto '=https' --tlsv1.3 -sSfL \
+                --retry 3 --retry-delay 5 --max-time 120 \
+                -o "${tmp_dir}/${BINARY_FILE}" "${URL}"
+
+            # Verify checksum before installation
+            local checksum
+            checksum="$(sha256sum "${tmp_dir}/${BINARY_FILE}" | awk '{print $1;}')"
+            if [[ "${checksum}" != "${expected_checksum}" ]]; then
+                echo >&2 "fatal: ${URL} checksum '${checksum}' differs from expected '${expected_checksum}'"
+                return 1
+            fi
+
+            sudo install "${tmp_dir}/${BINARY_FILE}" "${USR_LOCAL_BIN}/kubectl"
             KUBECTL="$(command -v kubectl)"
         else
             echo "ERROR: Missing required binary in path: kubectl"

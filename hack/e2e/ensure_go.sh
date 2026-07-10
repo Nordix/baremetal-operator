@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -eu
+set -eu -o pipefail
 
 MINIMUM_GO_VERSION=go1.25.11
 
@@ -17,22 +17,53 @@ verify_go_version() {
             return 0
         fi
         if [[ "${OSTYPE}" == "linux-gnu" ]]; then
+            if ! command -v sha256sum &>/dev/null; then
+                echo "ERROR: sha256sum not found" >&2
+                return 1
+            fi
+
             echo "go not found, installing"
-            local GO_TARBALL="${MINIMUM_GO_VERSION}.linux-amd64.tar.gz"
+            local tmp_dir
+            tmp_dir="$(mktemp -d)"
+            trap 'rm -rf "${tmp_dir}"; trap - RETURN' RETURN
+
+            local BINARY_FILE="${MINIMUM_GO_VERSION}.linux-amd64.tar.gz"
+            local CHECKSUMS_URL="https://dl.google.com/go/${BINARY_FILE}.sha256"
+            local URL="https://go.dev/dl/${BINARY_FILE}"
+
+            local expected_checksum checksum
+            local success=false
             for attempt in 1 2 3; do
                 echo "Downloading Go (attempt ${attempt}/3)"
-                if curl -fsSL -o "/tmp/${GO_TARBALL}" "https://go.dev/dl/${GO_TARBALL}" && \
-                    curl -fsSL -o "/tmp/${GO_TARBALL}.sha256" "https://dl.google.com/go/${GO_TARBALL}.sha256" && \
-                    echo "$(cat "/tmp/${GO_TARBALL}.sha256")  /tmp/${GO_TARBALL}" | sha256sum --check --quiet; then
-                    break
+                if curl --proto '=https' --tlsv1.3 -sSfL \
+                    --retry 3 --retry-delay 5 --max-time 120 \
+                    -o "${tmp_dir}/${BINARY_FILE}.sha256" "${CHECKSUMS_URL}" && \
+                    curl --proto '=https' --tlsv1.3 -sSfL \
+                    --retry 3 --retry-delay 5 --max-time 120 \
+                    -o "${tmp_dir}/${BINARY_FILE}" "${URL}"; then
+                    expected_checksum="$(awk '{print $1}' "${tmp_dir}/${BINARY_FILE}.sha256" | head -n1)"
+                    if [[ -z "${expected_checksum}" ]]; then
+                        echo >&2 "fatal: could not find checksum at ${CHECKSUMS_URL}"
+                        continue
+                    fi
+
+                    checksum="$(sha256sum "${tmp_dir}/${BINARY_FILE}" | awk '{print $1;}')"
+                    if [[ "${checksum}" == "${expected_checksum}" ]]; then
+                        success=true
+                        break
+                    fi
+                    echo >&2 "fatal: ${URL} checksum '${checksum}' differs from expected '${expected_checksum}'"
                 fi
-                rm -f "/tmp/${GO_TARBALL}" "/tmp/${GO_TARBALL}.sha256"
             done
-            [[ -f "/tmp/${GO_TARBALL}" ]] || { echo "ERROR: failed to download valid Go archive"; return 2; }
-            set -x
-            sudo tar -C /usr/local -xzf "/tmp/${GO_TARBALL}"
-            rm -f "/tmp/${GO_TARBALL}" "/tmp/${GO_TARBALL}.sha256"
-            set +x
+            if [[ "${success}" != "true" ]]; then
+                echo "ERROR: failed to download valid Go archive" >&2
+                return 2
+            fi
+
+            sudo tar \
+                -C /usr/local \
+                -xzf "${tmp_dir}/${BINARY_FILE}"
+
             export PATH="${PATH}:/usr/local/go/bin"
             GO="$(command -v go)"
         else
