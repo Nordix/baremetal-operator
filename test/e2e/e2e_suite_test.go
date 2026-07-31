@@ -82,6 +82,8 @@ func TestE2e(t *testing.T) {
 
 var _ = SynchronizedBeforeSuite(func() []byte {
 	var kubeconfigPath string
+	Logf("Printing e2econfig:\n")
+	Logf("%+v\n", e2eConfig)
 
 	if useExistingCluster {
 		kubeconfigPath = GetKubeconfigPath()
@@ -90,6 +92,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 			Name:              "bmo-e2e",
 			Images:            e2eConfig.GetClusterctlImages(),
 			ExtraPortMappings: e2eConfig.KindExtraPortMappings,
+			IPFamily:          e2eConfig.GetVariable("IP_FAMILY"),
 		})
 		Expect(clusterProvider).ToNot(BeNil(), "Failed to create a cluster")
 		kubeconfigPath = clusterProvider.GetKubeconfigPath()

@@ -100,6 +100,7 @@ func LoadE2EConfig(configPath string, g *WithT) *Config {
 	configData, err := os.ReadFile(configPath) //#nosec
 	g.Expect(err).ToNot(HaveOccurred(), "Failed to read the e2e test config file")
 	g.Expect(configData).ToNot(BeEmpty(), "The e2e test config file should not be empty")
+	Logf("Using config file %s", configPath)
 
 	config := &Config{}
 	g.Expect(yaml.Unmarshal(configData, config)).To(Succeed(), "Failed to parse the e2e test config file")

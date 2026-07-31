@@ -45,11 +45,11 @@ variables:
   # This allows upgrade tests to run alongside other tests, but requires a separate
   # provisioning IP (see UPGRADE_IRONIC_PROVISIONING_IP).
   UPGRADE_USE_EXISTING_CLUSTER: "false"
-  UPGRADE_IRONIC_PROVISIONING_IP: "fd55::3"
+  UPGRADE_IRONIC_PROVISIONING_IP: "${UPGRADE_IRONIC_PROVISIONING_IP}"
 
-  IMAGE_URL: "http://[fd55::1]/cirros-0.6.2-x86_64-disk.img"
-  ISO_IMAGE_URL: "http://[fd55::1]/sysrescue-out.iso"
-  IMAGE_CHECKSUM: "c8fc807773e5354afe61636071771906"
+  IMAGE_URL: "${IMAGE_URL}"
+  ISO_IMAGE_URL: "${ISO_IMAGE_URL}"
+  IMAGE_CHECKSUM: "${IMAGE_CHECKSUM}"
   CERT_MANAGER_VERSION: "v1.19.2"
   SSH_CHECK_PROVISIONED: "true"
   SSH_USERNAME: "root"
@@ -59,12 +59,12 @@ variables:
   FETCH_IRONIC_NODES: "true"
   IRONIC_USERNAME: "changeme"
   IRONIC_PASSWORD: "changeme"
-  IRONIC_PROVISIONING_IP: "fd55::2"
+  IRONIC_PROVISIONING_IP: "${IRONIC_PROVISIONING_IP}"
   IRONIC_PROVISIONING_PORT: "6385"
   IRONIC_CLIENT_TIMEOUT: "15s"
   # Boot mode can be legacy, UEFI or UEFISecureBoot
   BOOT_MODE: "UEFI"
-  IP_FAMILY: "ipv6"
+  IP_FAMILY: "${IP_FAMILY}"
 
   NAMESPACE_SCOPED: "true"
 

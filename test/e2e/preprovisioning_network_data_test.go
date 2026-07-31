@@ -67,11 +67,22 @@ var _ = Describe("Preprovisioning Network Data", Label("required", "pp-network-d
 		// Derive a test IP from bmc.IPAddress by flipping the top bit of the
 		// last octet. This keeps us on the same subnet while avoiding collisions
 		// with the real address (e.g. 192.168.222.122 -> 192.168.222.250).
-		ip := net.ParseIP(bmc.IPAddress).To4()
+		ip := net.ParseIP(bmc.IPAddress)
 		Expect(ip).NotTo(BeNil(), "failed to parse BMC IP address %q", bmc.IPAddress)
-		ip[3] ^= 0x80
-		staticIP := ip.String()
-
+		staticIP := ""
+		ipType := "ipv4"
+		netmask := "255.255.255.0"
+		if ip.To4() == nil {
+			// address is v6
+			ip[15] ^= 0x80
+			staticIP = ip.String()
+			ipType = "ipv6"
+			netmask = "64"
+		} else {
+			ip = ip.To4()
+			ip[3] ^= 0x80
+			staticIP = ip.String()
+		}
 		networkData := fmt.Sprintf(`{
   "links": [
     {"id": "iface0", "type": "phy", "ethernet_mac_address": "%s"}
@@ -80,14 +91,15 @@ var _ = Describe("Preprovisioning Network Data", Label("required", "pp-network-d
     {
       "id": "network0",
       "link": "iface0",
-      "type": "ipv4",
+      "type": "%s",
       "ip_address": "%s",
-      "netmask": "255.255.255.0",
+      "netmask": "%s",
       "network_id": "test-pp-network"
     }
   ],
   "services": []
-}`, strings.ToUpper(bmc.BootMacAddress), staticIP)
+}`, strings.ToUpper(bmc.BootMacAddress), ipType, staticIP, netmask)
+
 		CreateSecret(ctx, clusterProxy.GetClient(), namespace.Name, networkDataSecretName, map[string]string{
 			"networkData": networkData,
 		})

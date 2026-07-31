@@ -112,7 +112,7 @@ var _ = Describe("Metrics Service", Label("required", "metrics-service"), func()
 							"-v",
 							"--tlsv1.3",
 							"-k",
-							"-H", "Authorization:Bearer " + token,
+							"-H", "'Authorization:Bearer " + token + "'",
 							fmt.Sprintf("https://%s.%s.svc.cluster.local:8443/metrics", metricsServiceName, existingNamespace),
 						},
 					},

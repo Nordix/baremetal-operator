@@ -19,7 +19,7 @@ cd "${REPO_ROOT}" || exit 1
 
 "${REPO_ROOT}"/hack/check-e2e.sh
 
-BMC_PROTOCOL="${BMC_PROTOCOL:-"redfish-virtualmedia"}"
+BMC_PROTOCOL="${BMC_PROTOCOL:-"redfish"}"
 if [[ "${BMC_PROTOCOL}" == "redfish" ]] || [[ "${BMC_PROTOCOL}" == "redfish-virtualmedia" ]]; then
   export BMO_E2E_EMULATOR="sushy-tools"
 elif [[ "${BMC_PROTOCOL}" == "ipmi" ]]; then
@@ -63,6 +63,9 @@ export PATH="/usr/local/go/bin:${PATH}"
 # CAPI test framework uses kubectl in the background
 "${REPO_ROOT}/hack/e2e/ensure_kubectl.sh"
 "${REPO_ROOT}/hack/e2e/ensure_yq.sh"
+# Source the correct address set
+export USE_IPV6="${USE_IPV6:-true}"
+. "${REPO_ROOT}/hack/e2e/ip_addressing.sh"
 
 sudo apt-get update
 sudo apt-get install -y libvirt-dev pkg-config gettext-base curl
@@ -74,15 +77,11 @@ sudo sysctl fs.inotify.max_user_watches=1048576
 sudo sysctl fs.inotify.max_user_instances=8192
 
 # Build the container image with e2e tag (used in tests)
-IMG=quay.io/metal3-io/baremetal-operator IMG_TAG=e2e make docker
+# IMG=quay.io/metal3-io/baremetal-operator IMG_TAG=e2e make docker
 
 # Build vbmctl
 make build-vbmctl
 sudo setcap cap_net_admin+epi ./bin/vbmctl
-
-# This IP is defined by the network we created above. It is sushy-tools / image
-# server endpoint, not ironic.
-export IP_ADDRESS="192.168.222.1"
 
 # E2E emulator configuration variables
 if [[ "${BMO_E2E_EMULATOR}" == "vbmc" ]]; then
@@ -101,7 +100,7 @@ CIRROS_VERSION="0.6.2"
 IMAGE_FILE="cirros-${CIRROS_VERSION}-x86_64-disk.img"
 ISO_FILE="systemrescue-11.00-amd64.iso"
 export IMAGE_CHECKSUM="c8fc807773e5354afe61636071771906"
-export IMAGE_URL="http://${IP_ADDRESS}/${IMAGE_FILE}"
+export IMAGE_URL="http://${HOST_ADDRESS}/${IMAGE_FILE}"
 export IMAGE_DIR="${REPO_ROOT}/test/e2e/images"
 mkdir -p "${IMAGE_DIR}"
 
@@ -124,7 +123,7 @@ if [[ ! -f "${IMAGE_DIR}/${IPA_FILE}" ]]; then
 fi
 
 # shellcheck disable=SC2016
-envsubst '${BMO_E2E_EMULATOR},${IP_ADDRESS},${BMO_E2E_IMAGE},${BMO_E2E_LISTEN_PORT},${IMAGE_DIR}' < \
+envsubst '${BMO_E2E_EMULATOR},${IP_ADDRESS},${BMO_E2E_IMAGE},${BMO_E2E_LISTEN_PORT},${IMAGE_DIR},${SUBNET_MASK}' < \
   "${REPO_ROOT}/test/e2e/config/vbmctl.yaml.tmpl" > \
   "${REPO_ROOT}/test/e2e/config/vbmctl.yaml"
 
@@ -140,7 +139,7 @@ envsubst '${BMO_E2E_EMULATOR},${IP_ADDRESS},${BMO_E2E_IMAGE},${BMO_E2E_LISTEN_PO
 # error. Poll the Redfish endpoint, restarting the container if needed, and fail
 # loudly if it never comes up
 wait_for_sushy_tools() {
-  local redfish_url="http://${IP_ADDRESS}:${BMO_E2E_LISTEN_PORT}/redfish/v1/"
+  local redfish_url="http://${HOST_ADDRESS}:${BMO_E2E_LISTEN_PORT}/redfish/v1/"
   local container attempts=0 max_attempts=30
 
   # Detect the sushy-tools container name (vbmctl may name it with or without an
@@ -218,7 +217,7 @@ EOF
     ./sysrescue-customize --auto --recipe-dir recipe --source "${ISO_FILE}" --dest=sysrescue-out.iso
     popd
 fi
-export ISO_IMAGE_URL="http://${IP_ADDRESS}/sysrescue-out.iso"
+export ISO_IMAGE_URL="http://${HOST_ADDRESS}/sysrescue-out.iso"
 
 # Generate credentials
 BMO_OVERLAYS=(
@@ -245,9 +244,33 @@ echo "${IRONIC_USERNAME}" > "${IRSO_IRONIC_AUTH_DIR}/ironic-username"
 echo "${IRONIC_PASSWORD}" > "${IRSO_IRONIC_AUTH_DIR}/ironic-password"
 
 # shellcheck disable=SC2016
-SSH_PUB_KEY_CONTENT="${pub_ssh_key}" envsubst '${SSH_PUB_KEY_CONTENT}' < \
+SSH_PUB_KEY_CONTENT="${pub_ssh_key}" envsubst < \
   "${REPO_ROOT}/test/e2e/data/ironic-standalone-operator/ironic/base/ironic.yaml.tmpl" > \
   "${REPO_ROOT}/test/e2e/data/ironic-standalone-operator/ironic/base/ironic.yaml"
+envsubst < \
+	"${REPO_ROOT}/test/e2e/config/ironic.yaml.tmpl" > \
+	"${REPO_ROOT}/test/e2e/config/ironic.yaml"
+envsubst < \
+	"${REPO_ROOT}/test/e2e/data/ironic-standalone-operator/components/tls/certificate.yaml.tmpl" > \
+	"${REPO_ROOT}/test/e2e/data/ironic-standalone-operator/components/tls/certificate.yaml"
+envsubst < \
+	"${REPO_ROOT}/test/e2e/data/ironic-standalone-operator/operator/irso-v0.10/kustomization.yaml.tmpl" > \
+	"${REPO_ROOT}/test/e2e/data/ironic-standalone-operator/operator/irso-v0.10/kustomization.yaml"
+envsubst < \
+	"${REPO_ROOT}/test/e2e/config/bmcs-fixture.yaml.tmpl" > \
+	"${REPO_ROOT}/test/e2e/config/bmcs-fixture.yaml"
+envsubst < \
+	"${REPO_ROOT}/test/e2e/config/bmcs-ipmi.yaml.tmpl" > \
+	"${REPO_ROOT}/test/e2e/config/bmcs-ipmi.yaml"
+envsubst < \
+	"${REPO_ROOT}/test/e2e/config/bmcs-redfish-virtualmedia.yaml.tmpl" > \
+	"${REPO_ROOT}/test/e2e/config/bmcs-redfish-virtualmedia.yaml"
+envsubst < \
+	"${REPO_ROOT}/test/e2e/config/bmcs-redfish.yaml.tmpl" > \
+	"${REPO_ROOT}/test/e2e/config/bmcs-redfish.yaml"
+envsubst < \
+	"${REPO_ROOT}/config/overlays/e2e/ironic.env.tmpl" > \
+	"${REPO_ROOT}/config/overlays/e2e/ironic.env"
 
 # We need to gather artifacts/logs before exiting also if there are errors
 set +e
