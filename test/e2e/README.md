@@ -58,8 +58,8 @@ export GINKGO_FOCUS="upgrade"
 can be found as the first string value (formatting included) of the line with
 `Describe` or `It`. These can also be combined with other proceeding sections to
 match to even more specific test sections. The value `GINKGO_FOCUS` uses is a
-regexp that should match the description of the spec but not match the regexp
-specified in `GINKGO_SKIP`.
+regexp (case sensitive) that should match the description of the spec but not
+match the regexp specified in `GINKGO_SKIP`.
 
 Example:
 

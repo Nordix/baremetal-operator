@@ -28,6 +28,12 @@ const (
 	// TryLoadImage causes any errors that occur when loading an image to be
 	// ignored.
 	TryLoadImage LoadImageBehavior = "tryLoad"
+
+	// IpFamilyV4 is the constant for IPv4 family
+	IpFamilyV4 string = "ipv4"
+
+	// IpFamilyV6 is the constant for IPv4 family
+	IpFamilyV6 string = "ipv6"
 )
 
 // ContainerImage describes an image to load into a cluster.
@@ -100,6 +106,7 @@ func LoadE2EConfig(configPath string, g *WithT) *Config {
 	configData, err := os.ReadFile(configPath) //#nosec
 	g.Expect(err).ToNot(HaveOccurred(), "Failed to read the e2e test config file")
 	g.Expect(configData).ToNot(BeEmpty(), "The e2e test config file should not be empty")
+	Logf("Using config file %s", configPath)
 
 	config := &Config{}
 	g.Expect(yaml.Unmarshal(configData, config)).To(Succeed(), "Failed to parse the e2e test config file")

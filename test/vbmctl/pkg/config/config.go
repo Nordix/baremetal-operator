@@ -49,7 +49,7 @@ const (
 	DefaultNetworkAddress = "192.168.222.1"
 
 	// DefaultNetworkNetmask is the default netmask for the network.
-	DefaultNetworkNetmask = "255.255.255.0"
+	DefaultNetworkNetmask = 24
 
 	// dirPermissions is the default permission for directories.
 	dirPermissions = 0750
@@ -320,25 +320,14 @@ func (c *Config) Validate() error {
 		}
 
 		if network.Address != "" {
-			addr, err := netip.ParseAddr(network.Address)
+			_, err := netip.ParseAddr(network.Address)
 			if err != nil {
 				return fmt.Errorf("malformed libvirt network address: %w", err)
 			}
-			if !addr.Is4() {
-				return fmt.Errorf("libvirt network address must be an IPv4 address: %s", network.Address)
-			}
 		}
 
-		if network.Netmask != "" {
-			ip := net.ParseIP(network.Netmask)
-			if ip == nil {
-				return fmt.Errorf("malformed libvirt netmask: %s", ip)
-			}
-			m := net.IPMask(ip.To4())
-			ones, zeros := m.Size()
-			if ones == 0 && zeros == 0 {
-				return fmt.Errorf("malformed libvirt netmask: %s", ip)
-			}
+		if network.Netmask > 128 || network.Netmask < 0 {
+			return fmt.Errorf("netmask must be integer between 0 and 128 (inclusive)")
 		}
 	}
 

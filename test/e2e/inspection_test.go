@@ -114,6 +114,32 @@ var _ = Describe("Inspection", Label("required", "inspection"), func() {
 		secret := CreateSecret(ctx, clusterProxy.GetClient(), namespace.Name, "bmc-credentials", bmcCredentialsData)
 		toCleanup = append(toCleanup, secret)
 
+		networkDataContent := fmt.Sprintf(`{
+  "links": [
+    {
+      "id": "enp1s0",
+      "type": "phy",
+      "ethernet_mac_address": "%s"
+    }
+  ],
+  "networks": [
+    {
+      "id": "v6network",
+      "link": "enp1s0",
+      "type": "%s",
+      "ip_address": "%s",
+      "netmask": "ffff:ffff:ffff:ffff::",
+      "network_id": "test-ipv6-network"
+    }
+  ],
+  "services": []
+}`, bmc.BootMacAddress, e2eConfig.GetVariable("IP_FAMILY"), bmc.IPAddress)
+		networkDataSecretName := fmt.Sprintf("%s-networkdata", bmc.Name)
+		networkDataSecret := CreateSecret(ctx, clusterProxy.GetClient(), namespace.Name, networkDataSecretName, map[string]string{
+			"networkData": networkDataContent,
+		})
+		toCleanup = append(toCleanup, networkDataSecret)
+
 		By("creating a BMH")
 		bmh := metal3api.BareMetalHost{
 			ObjectMeta: metav1.ObjectMeta{
@@ -127,6 +153,8 @@ var _ = Describe("Inspection", Label("required", "inspection"), func() {
 					DisableCertificateVerification: bmc.DisableCertificateVerification,
 				},
 				BootMode: metal3api.BootMode(e2eConfig.GetVariable("BOOT_MODE")),
+				BootMACAddress:                 bmc.BootMacAddress,
+				PreprovisioningNetworkDataName: networkDataSecretName,
 			},
 		}
 		// BootMacAddress is optional for redfish-virtualmedia
