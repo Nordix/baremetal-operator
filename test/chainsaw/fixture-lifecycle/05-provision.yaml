@@ -1,0 +1,15 @@
+apiVersion: metal3.io/v1alpha1
+kind: BareMetalHost
+metadata:
+  name: demo-host
+  namespace: ($namespace)
+spec:
+  online: true
+  bootMode: UEFI
+  bootMACAddress: "00:60:2f:31:81:01"
+  bmc:
+    address: "redfish+http://192.168.222.1:8000/redfish/v1/Systems/bmo-e2e-0"
+    credentialsName: demo-bmc-credentials
+  image:
+    url: "https://example.com/image"
+    checksum: "be254ebfd73e66ca91f6d91f5050aa2ee1ec4813ee65ba472f608ed340cbff09"

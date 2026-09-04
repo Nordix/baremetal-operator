@@ -1,0 +1,11 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Configuration
+metadata:
+  name: bmo-fixture-demo
+spec:
+  timeouts:
+    apply: 10s
+    assert: 60s
+    cleanup: 30s
+    delete: 30s
+    error: 30s

@@ -1,0 +1,17 @@
+apiVersion: metal3.io/v1alpha1
+kind: BareMetalHost
+metadata:
+  name: demo-host
+  namespace: ($namespace)
+status:
+  hardware:
+    cpu:
+      arch: x86_64
+      model: FancyPants CPU
+      count: 1
+    nics:
+    - name: nic-1
+      mac: "ab:cd:12:34:56:78"
+      pxe: true
+    - name: nic-2
+      mac: "12:34:56:78:ab:cd"

@@ -1,0 +1,50 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: fixture-lifecycle
+spec:
+  description: >
+    BareMetalHost lifecycle against BMO's in-memory "fixture" provisioner:
+    registering -> inspecting -> available -> provisioning -> provisioned
+    -> deprovisioning -> available. No real BMC or image server required.
+  steps:
+  - name: create BMC credentials secret
+    try:
+    - apply:
+        file: 01-bmc-secret.yaml
+  - name: create the BareMetalHost
+    try:
+    - apply:
+        file: 02-bmh.yaml
+    - assert:
+        file: 02-assert-registering.yaml
+  - name: inspection starts
+    try:
+    - assert:
+        file: 03-assert-inspecting.yaml
+  - name: host becomes available with simulated hardware data
+    try:
+    - assert:
+        file: 04-assert-available.yaml
+    - assert:
+        file: 04-assert-hardware.yaml
+  - name: provision an image
+    try:
+    - apply:
+        file: 05-provision.yaml
+    - assert:
+        file: 05-assert-provisioning.yaml
+  - name: provisioning completes
+    try:
+    - assert:
+        file: 06-assert-provisioned.yaml
+  - name: deprovision the host
+    try:
+    - apply:
+        file: 07-deprovision.yaml
+    - assert:
+        file: 07-assert-deprovisioning.yaml
+  - name: host returns to available
+    try:
+    - assert:
+        file: 08-assert-available-again.yaml
