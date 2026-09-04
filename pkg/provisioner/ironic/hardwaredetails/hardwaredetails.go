@@ -13,7 +13,10 @@ import (
 )
 
 // GetHardwareDetails converts Ironic introspection data into BareMetalHost HardwareDetails.
-func GetHardwareDetails(data *nodes.InventoryData, logger logr.Logger) *metal3api.HardwareDetails {
+// properties is the node's properties map (as returned by the Ironic node API), used to
+// source data derived from inspection hooks that is stored on the node rather than in the
+// inventory data itself, such as accelerators.
+func GetHardwareDetails(data *nodes.InventoryData, properties map[string]any, logger logr.Logger) *metal3api.HardwareDetails {
 	ironicData, err := data.PluginData.AsStandardData()
 	if err != nil {
 		logger.Error(err, "cannot get plugin data from inventory, some fields will not be available")
@@ -27,6 +30,7 @@ func GetHardwareDetails(data *nodes.InventoryData, logger logr.Logger) *metal3ap
 	details.Storage = getStorageDetails(data.Inventory.Disks)
 	details.CPU = getCPUDetails(&data.Inventory.CPU)
 	details.Hostname = data.Inventory.Hostname
+	details.Accelerators = getAcceleratorDetails(properties, logger)
 	return details
 }
 
@@ -203,4 +207,50 @@ func getFirmwareDetails(firmwaredata inventory.SystemFirmwareType) metal3api.Fir
 			Date:    firmwaredata.BuildDate,
 		},
 	}
+}
+
+// getAcceleratorDetails extracts accelerator devices (e.g. GPUs) from the node's
+// properties, as populated by Ironic's "accelerators" inspection hook. The value
+// is a list of maps with the keys vendor_id, device_id, type, device_info and
+// pci_address.
+func getAcceleratorDetails(properties map[string]any, logger logr.Logger) []metal3api.Accelerator {
+	if properties == nil {
+		return nil
+	}
+
+	rawAccelerators, ok := properties["accelerators"]
+	if !ok {
+		return nil
+	}
+
+	accelerators, ok := rawAccelerators.([]any)
+	if !ok {
+		logger.Info("accelerators property is not a list, ignoring", "value", rawAccelerators)
+		return nil
+	}
+
+	var result []metal3api.Accelerator
+	for _, entry := range accelerators {
+		accelerator, ok := entry.(map[string]any)
+		if !ok {
+			logger.Info("accelerator entry is not a map, ignoring", "value", entry)
+			continue
+		}
+
+		vendorID, _ := accelerator["vendor_id"].(string)
+		deviceID, _ := accelerator["device_id"].(string)
+		accType, _ := accelerator["type"].(string)
+		deviceInfo, _ := accelerator["device_info"].(string)
+		pciAddress, _ := accelerator["pci_address"].(string)
+
+		result = append(result, metal3api.Accelerator{
+			VendorID:   vendorID,
+			DeviceID:   deviceID,
+			Type:       accType,
+			DeviceInfo: deviceInfo,
+			PCIAddress: pciAddress,
+		})
+	}
+
+	return result
 }

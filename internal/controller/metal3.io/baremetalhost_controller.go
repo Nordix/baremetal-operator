@@ -1177,6 +1177,12 @@ func (r *BareMetalHostReconciler) actionInspecting(ctx context.Context, prov pro
 	clearError(info.host)
 	info.host.Status.HardwareDetails = details
 
+	if syncAcceleratorLabels(info.host, details) {
+		if err := r.Update(ctx, info.host); err != nil {
+			return actionError{fmt.Errorf("failed to update host labels for accelerators: %w", err)}
+		}
+	}
+
 	// Create HardwareData with the same name and namesapce as BareMetalHost
 	hardwareData := &metal3api.HardwareData{}
 	hardwareDataKey := client.ObjectKey{

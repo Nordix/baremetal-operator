@@ -70,6 +70,21 @@ const (
 	//
 	// Deprecated: use InspectionMode instead.
 	InspectAnnotationValueDisabled = "disabled"
+
+	// GPULabel is set to "true" on a BareMetalHost when hardware inspection
+	// discovers at least one GPU accelerator. It can be used in a
+	// HostSelector to select hosts with GPU hardware.
+	GPULabel = "hardware.metal3.io/gpu"
+
+	// GPUCountLabel records the number of discovered GPU accelerator devices.
+	GPUCountLabel = "hardware.metal3.io/gpu-count"
+
+	// GPUModelLabelPrefix is the prefix for per-model labels that are set to
+	// "true" on a BareMetalHost for each distinct GPU vendor/device ID pair
+	// discovered during hardware inspection, e.g.
+	// "hardware.metal3.io/gpu-10de-1eb8=true" for an NVIDIA Tesla T4. It can
+	// be used in a HostSelector to select hosts with a specific GPU model.
+	GPUModelLabelPrefix = "hardware.metal3.io/gpu-"
 )
 
 // InspectionMode represents the mode of host inspection.
