@@ -22,9 +22,16 @@ if [[ ! -x "${VBMCTL}" ]]; then
     make -C "${REPO_ROOT}" build-vbmctl
 fi
 
+# vbmctl needs CAP_NET_ADMIN to create the veth pair that bridges the libvirt
+# network to the "kind" Docker network (see tools/bmh_test/vbmctl.yaml).
+sudo setcap cap_net_admin+eip "${VBMCTL}"
+
 # Create the "baremetal-e2e" libvirt network (bridge "metal3" at 192.168.222.1/24,
-# matching hack/e2e/net.xml) and start a sushy-tools BMC emulator container that
-# serves Redfish for VMs on the host via the local libvirt socket. Both use
-# vbmctl's built-in defaults, so no config file is required for this simple setup.
-"${VBMCTL}" create network
-"${VBMCTL}" create bmc-emulator --emulator-type sushy-tools
+# matching hack/e2e/net.xml), bridge it to a Docker network named "kind" so that
+# a kind cluster ends up able to reach it, and start a sushy-tools BMC emulator
+# container that serves Redfish for VMs on the host via the local libvirt socket.
+# See tools/bmh_test/vbmctl.yaml.
+#
+# NOTE: this must run *before* `kind create cluster`, so kind can detect and
+# reuse the pre-created "kind" Docker network instead of creating its own.
+"${VBMCTL}" -c "${REPO_ROOT}/tools/bmh_test/vbmctl.yaml" create bml

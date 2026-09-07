@@ -5,7 +5,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/metal3-io/baremetal-operator/test/vbmctl/pkg/config"
@@ -87,10 +86,6 @@ func newDeleteBMLCmd() *cobra.Command {
 			cfg, err := loadConfig()
 			if err != nil {
 				return err
-			}
-
-			if len(cfg.Spec.VMs) == 0 {
-				return errors.New("no VMs defined in configuration (spec.vms is empty)")
 			}
 
 			conn, err := libvirtgo.NewConnect(cfg.Spec.Libvirt.URI)

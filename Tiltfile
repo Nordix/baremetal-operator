@@ -17,13 +17,16 @@ keys = []
 
 always_enable_providers = ["metal3-bmo"]
 providers = {}
-extra_args = settings.get("extra_args", {})
 
 # global settings
 settings.update(read_json(
     "tilt-settings.json",
     default = {},
 ))
+
+# Must be read after tilt-settings.json is loaded above, otherwise
+# any "extra_args" configured there would silently be ignored.
+extra_args = settings.get("extra_args", {})
 
 if settings.get("trigger_mode") == "manual":
     trigger_mode(TRIGGER_MODE_MANUAL)
@@ -143,8 +146,12 @@ def enable_provider(name):
     substitutions = settings.get("kustomize_substitutions", {})
     os.environ.update(substitutions)
 
-    # Apply the kustomized yaml for this provider
-    yaml = str(kustomizesub(context + "/config"))
+    # Apply the kustomized yaml for this provider. The kustomize path defaults to
+    # "config" (config/kustomization.yaml), but can be overridden via
+    # tilt-settings.json, e.g. to "config/use-irso" for developing against a real
+    # Ironic deployed with ironic-standalone-operator (see docs/dev-setup.md).
+    kustomize_path = settings.get("kustomize_config_path", "config")
+    yaml = str(kustomizesub(context + "/" + kustomize_path))
     yaml = strip_sec_ctx(yaml)
     k8s_yaml(blob(yaml))
 

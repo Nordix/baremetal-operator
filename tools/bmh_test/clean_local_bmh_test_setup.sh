@@ -22,11 +22,9 @@ else
     echo "No virtual machines found. Skipping..."
 fi
 
-# Clear the sushy-tools BMC emulator
-"${VBMCTL}" delete bmc-emulator --emulator-type sushy-tools
-
-# Clear network
-"${VBMCTL}" delete network baremetal-e2e
+# Clear the sushy-tools BMC emulator, the "baremetal-e2e" libvirt network, and
+# the veth pair/Docker network bridging it to kind (see tools/bmh_test/vbmctl.yaml).
+"${VBMCTL}" -c "${REPO_ROOT}/tools/bmh_test/vbmctl.yaml" delete bml
 
 # Cleanup VM and volume qcow2
 rm -rf /tmp/bmo-e2e-*.qcow2

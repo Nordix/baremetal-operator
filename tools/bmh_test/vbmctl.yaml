@@ -1,0 +1,26 @@
+apiVersion: vbmctl.metal3.io/v1alpha1
+kind: Config
+spec:
+  networks:
+  - name: baremetal-e2e
+    bridge: metal3
+    address: 192.168.222.1
+    netmask: 255.255.255.0
+  # These connect the libvirt network above to a Docker network named "kind",
+  # which `kind create cluster` will detect and reuse automatically (instead of
+  # creating its own), so that the kind node ends up on the same L2 network as
+  # the VMs and the BMC emulator. This matches what the E2E tests do, see
+  # test/e2e/config/vbmctl.yaml.tmpl.
+  vethPairs:
+  - link1: metal3
+    link2: kind-bridge
+    veth1: metalend
+    veth2: kindend
+  dockerNetworks:
+  - name: "kind"
+    bridgeName: "kind-bridge"
+    subnet: "fc00:f853:ccd:e793::/64"
+    driverMtu: 1500
+    ipv6: true
+  bmcEmulator:
+    type: sushy-tools

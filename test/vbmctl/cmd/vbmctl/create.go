@@ -5,7 +5,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 
@@ -176,10 +175,6 @@ Example configuration:
 			cfg, err := loadConfig()
 			if err != nil {
 				return err
-			}
-
-			if len(cfg.Spec.VMs) == 0 {
-				return errors.New("no VMs defined in configuration (spec.vms is empty)")
 			}
 
 			if cfg.Spec.ImageServer != nil {

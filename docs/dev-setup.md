@@ -202,12 +202,29 @@ and specially the [Baremetal Operator Integration](https://github.com/metal3-io/
 ### Alternative Tilt Setup Method
 
 In case the standard Tilt setup (`make tilt-up`) does not work as expected,
-you can reproduce the same steps manually:
+you can reproduce the same steps manually. There are two flavors of this,
+depending on how much of the real stack you want to exercise:
+
+- **Lightweight setup with the fixture provisioner**: no libvirt, no
+  BMC emulation, no real Ironic. BareMetalHosts go from `registering` to
+  `available` in a few seconds. Good for iterating on controller logic.
+- **Full setup with a real Ironic**: deploys
+  [ironic-standalone-operator](https://github.com/metal3-io/ironic-standalone-operator)
+  (IrSO) and uses real libvirt VMs, so BareMetalHosts go through the full
+  state machine for real (`registering` -> `inspecting` -> `available`),
+  which takes a few minutes. This is closer to what
+  [the E2E tests](../test/e2e/) do.
+
+In both cases, the cluster must be named `bmo`, since that is the only
+[`allowed_contexts`](../Tiltfile) the `Tiltfile` will talk to.
+
+#### Lightweight setup with the fixture provisioner
+
+This runs the manager with `-provisioner=fixture` (see
+[Running without Ironic](#running-without-ironic)), so no BMC, libvirt VM, or
+Ironic of any kind is required.
 
 **Create a Kind Cluster**:
-
-The cluster must be named `bmo`, since that is the only
-[`allowed_contexts`](../Tiltfile) the `Tiltfile` will talk to.
 
 ```sh
 kind create cluster --name bmo
@@ -217,6 +234,122 @@ kind create cluster --name bmo
 
 ```sh
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+```
+
+**Configure Tilt to use the fixture provisioner**, by creating
+`tilt-settings.json` at the repository root:
+
+```json
+{
+    "extra_args": {
+        "metal3-bmo": ["--provisioner=fixture"]
+    }
+}
+```
+
+**Launch Tilt**:
+
+```sh
+tilt up
+```
+
+Once Tilt has built and deployed the manager, create a BareMetalHost:
+
+```sh
+kubectl apply -f examples/fixture-host.yaml
+```
+
+Since the fixture provisioner never actually talks to a BMC, the host should
+go from `registering` to `inspecting` to `available` within a few seconds:
+
+```sh
+kubectl get baremetalhost fixture-baremetalhost -w
+```
+
+To make additional hosts, copy `examples/fixture-host.yaml` and change the
+`name`s (they must be unique).
+
+To tear down, delete the BareMetalHost(s) (this completes instantly, since
+there is no real backend to wait for) and the cluster:
+
+```sh
+kubectl delete -f examples/fixture-host.yaml
+kind delete cluster --name bmo   # or: make kind-reset
+```
+
+#### Full setup with a real Ironic (ironic-standalone-operator)
+
+This deploys a real Ironic with
+[ironic-standalone-operator](https://github.com/metal3-io/ironic-standalone-operator)
+(IrSO) and uses real libvirt VMs as BareMetalHosts, connected through
+[sushy-tools](https://opendev.org/openstack/sushy-tools) (Redfish virtual
+media). libvirt-clients and libvirt-daemon-system are required. VM creation,
+BMC emulation, and network setup are all handled by
+[`vbmctl`](../test/vbmctl/README.md), the same tool used by the E2E tests.
+Build it with:
+
+```sh
+make build-vbmctl
+```
+
+This requires a C compiler and the `libvirt-dev`/`libvirt-devel` headers, since
+`vbmctl` links against libvirt (see
+[Toolchain prerequisites](#toolchain-prerequisites)).
+
+**Set up the network and BMC emulator**. This must run *before* creating the
+kind cluster:
+
+```sh
+tools/bmh_test/run_local_bmh_test_setup.sh
+```
+
+This creates a libvirt network named `baremetal-e2e` (bridge `metal3`,
+`192.168.222.1/24`, matching [`hack/e2e/net.xml`](../hack/e2e/net.xml)),
+starts a sushy-tools container, and, like the E2E tests, creates a Docker
+network named `kind` bridged to the libvirt network via a veth pair (see
+[`tools/bmh_test/vbmctl.yaml`](../tools/bmh_test/vbmctl.yaml)). Creating this
+Docker network ahead of time is what allows `kind create cluster` below to
+join it automatically instead of creating its own isolated network, so that
+the kind node ends up on the same network as the VMs and the BMC emulator.
+
+**Create a Kind Cluster**:
+
+```sh
+kind create cluster --name bmo
+```
+
+**Install Cert-Manager**:
+
+```sh
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+```
+
+**Install ironic-standalone-operator**, and wait for it to be ready:
+
+```sh
+kubectl apply -f https://github.com/metal3-io/ironic-standalone-operator/releases/download/v0.11.0/install.yaml
+kubectl wait --for=condition=Available deployment/ironic-standalone-operator-controller-manager \
+  -n ironic-standalone-operator-system --timeout=120s
+```
+
+**Deploy Ironic**, using the minimal development `Ironic` custom resource
+provided in [`tools/bmh_test/ironic.yaml`](../tools/bmh_test/ironic.yaml) (no
+TLS, no manual credentials -- IrSO generates its own API credentials secret
+automatically):
+
+```sh
+kubectl create namespace baremetal-operator-system
+kubectl apply -f tools/bmh_test/ironic.yaml
+kubectl wait --for=condition=Ready ironic/ironic -n baremetal-operator-system --timeout=300s
+```
+
+**Configure Tilt to deploy BMO against this Ironic**, by creating
+`tilt-settings.json` at the repository root:
+
+```json
+{
+    "kustomize_config_path": "config/use-irso"
+}
 ```
 
 **Launch Tilt**:
@@ -230,43 +363,6 @@ should see it running with:
 
 ```sh
 kubectl get pods -n baremetal-operator-system
-```
-
-To tear the cluster down again, either use `make kind-reset` or run
-`kind delete cluster --name bmo` directly.
-
-### Making (virtual) BareMetalHosts with Tilt interface
-
-libvirt-clients and libvirt-daemon-system are required to create the VMs
-used as BareMetalHosts. VM creation, BMC emulation (via
-[sushy-tools](https://opendev.org/openstack/sushy-tools), Redfish), and
-network setup are all handled by
-[`vbmctl`](../test/vbmctl/README.md), the same tool used by the E2E tests.
-Build it with:
-
-```sh
-make build-vbmctl
-```
-
-This requires a C compiler and the `libvirt-dev`/`libvirt-devel` headers, since
-`vbmctl` links against libvirt (see
-[Toolchain prerequisites](#toolchain-prerequisites)).
-
-The network and BMC emulator needed for making BareMetalHosts can be
-initialized with
-
-```sh
-tools/bmh_test/run_local_bmh_test_setup.sh
-```
-
-This creates a libvirt network named `baremetal-e2e` (bridge `metal3`,
-`192.168.222.1/24`, matching [`hack/e2e/net.xml`](../hack/e2e/net.xml)) and
-starts a sushy-tools container using `vbmctl`'s defaults, equivalent to
-running:
-
-```sh
-bin/vbmctl create network
-bin/vbmctl create bmc-emulator --emulator-type sushy-tools
 ```
 
 When Tilt is up, it is possible to make BareMetalHosts by pressing a
@@ -286,9 +382,25 @@ identifies systems. Controlplane host can be created with
 tools/bmh_test/create_bmh.sh <NAME> <CONSUMER> <CONSUMER_NAMESPACE>
 ```
 
+Since this goes through a real Ironic and boots a real (virtual) machine,
+expect the host to take a few minutes to go from `registering` through
+`inspecting` to `available`:
+
+```sh
+kubectl get baremetalhost bmh-test-<NAME> -w
+```
+
 The network, BMC emulator, and virtual machines can be cleaned with
 
 ```sh
+tools/bmh_test/clean_local_bmh_test_setup.sh
+```
+
+To tear down everything, delete the cluster and clean up the VM/network
+resources (order does not matter):
+
+```sh
+kind delete cluster --name bmo   # or: make kind-reset
 tools/bmh_test/clean_local_bmh_test_setup.sh
 ```
 

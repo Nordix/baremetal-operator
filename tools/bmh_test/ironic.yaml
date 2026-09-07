@@ -1,0 +1,23 @@
+# A minimal Ironic custom resource for ironic-standalone-operator (IrSO),
+# for local development with Tilt. No TLS, no explicit basic-auth (IrSO
+# generates its own credentials secret automatically).
+#
+# See docs/dev-setup.md for how this fits into the local dev workflow, and
+# https://github.com/metal3-io/ironic-standalone-operator/blob/main/docs/api.md
+# for the full set of options.
+apiVersion: ironic.metal3.io/v1alpha1
+kind: Ironic
+metadata:
+  name: ironic
+  namespace: baremetal-operator-system
+spec:
+  version: "latest"
+  networking:
+    dhcp:
+      networkCIDR: "192.168.222.0/24"
+      rangeBegin: "192.168.222.100"
+      rangeEnd: "192.168.222.200"
+    interface: "eth0"
+    ipAddress: "192.168.222.2"
+    keepalived:
+      enabled: true
