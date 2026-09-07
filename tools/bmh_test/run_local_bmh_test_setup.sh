@@ -7,7 +7,7 @@ REPO_ROOT=$(realpath "$(dirname "${BASH_SOURCE[0]}")/../..")
 cd "${REPO_ROOT}" || exit 1
 
 # List of packages to check
-commands=("virt-install" "virsh")
+commands=("virsh")
 
 # Check each package
 for cmd in "${commands[@]}"; do
@@ -17,12 +17,14 @@ for cmd in "${commands[@]}"; do
     fi
 done
 
-# Define and start a virtual network
-virsh -c qemu:///system net-define "${REPO_ROOT}/hack/e2e/net.xml"
-virsh -c qemu:///system net-start baremetal-e2e
+VBMCTL="${REPO_ROOT}/bin/vbmctl"
+if [[ ! -x "${VBMCTL}" ]]; then
+    make -C "${REPO_ROOT}" build-vbmctl
+fi
 
-# Start VBMC
-docker run --name vbmc --network host -d \
-    -v /var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock \
-    -v /var/run/libvirt/libvirt-sock-ro:/var/run/libvirt/libvirt-sock-ro \
-    quay.io/metal3-io/vbmc
+# Create the "baremetal-e2e" libvirt network (bridge "metal3" at 192.168.222.1/24,
+# matching hack/e2e/net.xml) and start a sushy-tools BMC emulator container that
+# serves Redfish for VMs on the host via the local libvirt socket. Both use
+# vbmctl's built-in defaults, so no config file is required for this simple setup.
+"${VBMCTL}" create network
+"${VBMCTL}" create bmc-emulator --emulator-type sushy-tools

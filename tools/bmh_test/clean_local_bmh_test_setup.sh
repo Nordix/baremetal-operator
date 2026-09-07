@@ -2,27 +2,31 @@
 
 set -ux
 
+REPO_ROOT=$(realpath "$(dirname "${BASH_SOURCE[0]}")/../..")
+VBMCTL="${REPO_ROOT}/bin/vbmctl"
+
 BMH_NAME_REGEX="${1:-^bmh-test-}"
 # Get a list of all virtual machines
 VM_LIST=$(virsh -c qemu:///system list --all --name | grep "${BMH_NAME_REGEX}")
 
 if [[ -n "${VM_LIST}" ]]; then
-    # Loop through the list and delete each virtual machine
+    # Loop through the list and delete each virtual machine (and its volumes)
     for vm_name in ${VM_LIST}; do
-        virsh -c qemu:///system destroy --domain "${vm_name}"
-        virsh -c qemu:///system undefine --domain "${vm_name}" --remove-all-storage --nvram
-        kubectl delete baremetalhost "${vm_name}"
+        "${VBMCTL}" delete vm "${vm_name}"
+        # --wait=false: without a reachable Ironic endpoint the controller can
+        # never finish deprovisioning, so the finalizer is never removed and a
+        # blocking delete would hang forever.
+        kubectl delete baremetalhost "${vm_name}" --wait=false
     done
 else
     echo "No virtual machines found. Skipping..."
 fi
 
-# Clear vbmc
-docker rm -f vbmc
+# Clear the sushy-tools BMC emulator
+"${VBMCTL}" delete bmc-emulator --emulator-type sushy-tools
 
 # Clear network
-virsh -c qemu:///system net-destroy baremetal-e2e
-virsh -c qemu:///system net-undefine baremetal-e2e
+"${VBMCTL}" delete network baremetal-e2e
 
 # Cleanup VM and volume qcow2
 rm -rf /tmp/bmo-e2e-*.qcow2

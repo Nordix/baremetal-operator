@@ -201,10 +201,13 @@ and specially the [Baremetal Operator Integration](https://github.com/metal3-io/
 
 ### Alternative Tilt Setup Method
 
-In case the standard Tilt setup does not work as expected, you can use the
-following alternative method:
+In case the standard Tilt setup (`make tilt-up`) does not work as expected,
+you can reproduce the same steps manually:
 
 **Create a Kind Cluster**:
+
+The cluster must be named `bmo`, since that is the only
+[`allowed_contexts`](../Tiltfile) the `Tiltfile` will talk to.
 
 ```sh
 kind create cluster --name bmo
@@ -213,7 +216,7 @@ kind create cluster --name bmo
 **Install Cert-Manager**:
 
 ```sh
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.19.2/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
 ```
 
 **Launch Tilt**:
@@ -222,15 +225,48 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/
 tilt up
 ```
 
+Once Tilt has built and deployed the manager, you
+should see it running with:
+
+```sh
+kubectl get pods -n baremetal-operator-system
+```
+
+To tear the cluster down again, either use `make kind-reset` or run
+`kind delete cluster --name bmo` directly.
+
 ### Making (virtual) BareMetalHosts with Tilt interface
 
-Virtinst, libvirt-clients, libvirt-daemon-system, and
-[Virtualbmc](https://pypi.org/project/virtualbmc/) are required to to
-create BareMetalHosts this way. The network and VBMC needed for making a
-BareMetalHosts can be initialized with
+libvirt-clients and libvirt-daemon-system are required to create the VMs
+used as BareMetalHosts. VM creation, BMC emulation (via
+[sushy-tools](https://opendev.org/openstack/sushy-tools), Redfish), and
+network setup are all handled by
+[`vbmctl`](../test/vbmctl/README.md), the same tool used by the E2E tests.
+Build it with:
+
+```sh
+make build-vbmctl
+```
+
+This requires a C compiler and the `libvirt-dev`/`libvirt-devel` headers, since
+`vbmctl` links against libvirt (see
+[Toolchain prerequisites](#toolchain-prerequisites)).
+
+The network and BMC emulator needed for making BareMetalHosts can be
+initialized with
 
 ```sh
 tools/bmh_test/run_local_bmh_test_setup.sh
+```
+
+This creates a libvirt network named `baremetal-e2e` (bridge `metal3`,
+`192.168.222.1/24`, matching [`hack/e2e/net.xml`](../hack/e2e/net.xml)) and
+starts a sushy-tools container using `vbmctl`'s defaults, equivalent to
+running:
+
+```sh
+bin/vbmctl create network
+bin/vbmctl create bmc-emulator --emulator-type sushy-tools
 ```
 
 When Tilt is up, it is possible to make BareMetalHosts by pressing a
@@ -238,17 +274,19 @@ button in the Tilt localhost interface. This is currently only supported
 for Unix based systems. This button runs the content of file
 
 ```sh
-tools/bmh_test/create_bmh.sh <NAME> <VBMC_PORT>
+tools/bmh_test/create_bmh.sh <NAME>
 ```
 
-and adds the values given to the button as arguments. Controlplane host
-can be created with
+and adds the values given to the button as arguments. `create_bmh.sh`
+creates the VM with `vbmctl` and registers it as a BareMetalHost using its
+libvirt domain UUID as the Redfish system ID, since that is how sushy-tools
+identifies systems. Controlplane host can be created with
 
 ```sh
-tools/bmh_test/create_bmh.sh <NAME> <VBMC_PORT> <CONSUMER> <CONSUMER_NAMESPACE>
+tools/bmh_test/create_bmh.sh <NAME> <CONSUMER> <CONSUMER_NAMESPACE>
 ```
 
-The network, VBMC, and virtual machines can be cleaned with
+The network, BMC emulator, and virtual machines can be cleaned with
 
 ```sh
 tools/bmh_test/clean_local_bmh_test_setup.sh

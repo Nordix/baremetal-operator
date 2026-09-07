@@ -185,13 +185,12 @@ def include_custom_buttons():
 
     cmd_button(
         'BareMetalHosts:add_new_bmh',
-        argv=['sh', '-c', 'tools/bmh_test/create_bmh.sh $NAME $VBMC_PORT $CONSUMER $CONSUMER_NAMESPACE' ],
+        argv=['sh', '-c', 'tools/bmh_test/create_bmh.sh $NAME $CONSUMER $CONSUMER_NAMESPACE' ],
         resource = "BareMetalHosts",
         icon_name='add_box',
         text='Add New baremetalhost',
         inputs=[
             text_input('NAME', '"bmh-test-" is automatically added to the begining of the name. This naming convention is later used to clean the local testing environment.'),
-            text_input('VBMC_PORT'),
             text_input('CONSUMER'),
             text_input('CONSUMER_NAMESPACE'),
         ],
