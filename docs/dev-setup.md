@@ -404,6 +404,75 @@ kind delete cluster --name bmo   # or: make kind-reset
 tools/bmh_test/clean_local_bmh_test_setup.sh
 ```
 
+### Running E2E tests against a Tilt-managed cluster
+
+The [E2E test suite](../test/e2e/) normally creates and tears down its own
+kind cluster (named `bmo-e2e`) for every run. For fast iteration on a single
+test while developing, it is more convenient to point the suite at the
+cluster Tilt is already managing (`bmo`) instead: this skips the ~2-3 minute
+cluster/Ironic/BMO bring-up on every run, and reuses the manager binary Tilt
+is live-rebuilding on save.
+
+This works with either Tilt flavor described above. Set `USE_EXISTING_CLUSTER`
+and skip the installation steps the suite would otherwise perform, since Tilt
+(and, for the IrSO flavor, the manual `kubectl apply` steps above) already
+took care of them:
+
+```sh
+export KUBECONFIG=<kubeconfig for the "bmo" cluster, e.g. from `kind get kubeconfig --name bmo`>
+export USE_EXISTING_CLUSTER=true
+export DEPLOY_IRONIC=false
+export DEPLOY_BMO=false
+export DEPLOY_CERT_MANAGER=false
+export GINKGO_NODES=1
+export GINKGO_FOCUS="Inspection should inspect a newly created BMH"
+```
+
+Then pick the config matching the Tilt flavor you have running:
+
+- Fixture flavor:
+
+  ```sh
+  export E2E_CONF_FILE="$PWD/test/e2e/config/fixture.yaml"
+  export E2E_BMCS_CONF_FILE="$PWD/test/e2e/config/bmcs-fixture.yaml"
+  ```
+
+- Full IrSO flavor: make sure the `bmo-e2e-0`/`bmo-e2e-1` VMs that the
+  `ironic.yaml` DHCP host reservations and `bmcs-redfish-virtualmedia.yaml`
+  expect actually exist (create them with `vbmctl`, same as
+  `tools/bmh_test/create_bmh.sh` does, or reuse hosts created via the Tilt
+  button):
+
+  ```sh
+  export E2E_CONF_FILE="$PWD/test/e2e/config/ironic.yaml"
+  export E2E_BMCS_CONF_FILE="$PWD/test/e2e/config/bmcs-redfish-virtualmedia.yaml"
+  ```
+
+Then run:
+
+```sh
+make test-e2e
+```
+
+`GINKGO_FOCUS` accepts the same regexp syntax described in
+[test/e2e/README.md](../test/e2e/README.md), so this can target anything from
+a whole `Describe` block down to a single `It`. Tests are not fully isolated
+from each other's side effects when reusing a cluster across repeated runs
+(e.g. leftover namespaces/BMHs from a previous failed run), so it is safest to
+run one focused spec at a time and to `kubectl delete bmh --all -A` between
+runs if something was left behind.
+
+Note that tests tagged `ironic` (see [test/e2e/README.md](../test/e2e/README.md))
+require the IrSO flavor; they will fail fast against the fixture flavor since
+there is no real Ironic to talk to.
+
+Also note that `test/e2e/config/ironic.yaml` assumes a TLS-enabled Ironic (as
+deployed by the E2E suite's own `config/overlays/e2e` kustomization), so the
+optional `FETCH_IRONIC_NODES` step at the end of a spec may log a harmless
+"server gave HTTP response to HTTPS client" warning against the plain-HTTP
+`tools/bmh_test/ironic.yaml` CR used here. This does not affect the BMH
+provisioning flow under test.
+
 ## Using libvirt VMs with Ironic
 
 In order to use VMs as hosts, they need to be connected to
